@@ -38,7 +38,7 @@ services:
       - key: WEBHOOK_TIMEOUT_MS
         value: "5000"
       - key: EMAIL_TRANSPORT
-        value: SMTP
+        value: JSON
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -102,7 +102,7 @@ services:
       - key: WEBHOOK_TIMEOUT_MS
         value: "5000"
       - key: EMAIL_TRANSPORT
-        value: SMTP
+        value: JSON
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
