@@ -325,6 +325,36 @@ export type NotificationsResponse = {
     createdAt: string;
     updatedAt: string;
     entityName: string;
+    assignedToName: string | null;
+    assignedToEmail: string | null;
+    delegatedByName: string | null;
+  }>;
+};
+
+export type UsersResponse = {
+  users: Array<{
+    id: string;
+    email: string;
+    fullName: string;
+    role: "CLIENT_ADMIN" | "SUBSIDIARY_MANAGER" | "STAFF";
+    status: "ACTIVE" | "LOCKED" | "DEACTIVATED";
+    jobTitle: string | null;
+    department: string | null;
+    phone: string | null;
+    mfaRequired: boolean;
+    mfaEnabled: boolean;
+    supervisorUserId: string | null;
+    supervisorName: string | null;
+    lastLoginAt: string | null;
+    permissions: string[];
+    openNotificationCount: number;
+    assignedEntities: Array<{
+      id: string;
+      entityName: string;
+      entityCode: string;
+    }>;
+    createdAt: string;
+    updatedAt: string;
   }>;
 };
 
@@ -357,6 +387,33 @@ export type RegisterDocumentInput = {
   expiryDate?: string | null;
   notes?: string | null;
   isCriticalMaster?: boolean;
+};
+
+export type CreateUserInput = {
+  fullName: string;
+  email: string;
+  password: string;
+  role: "CLIENT_ADMIN" | "SUBSIDIARY_MANAGER" | "STAFF";
+  jobTitle?: string | null;
+  department?: string | null;
+  phone?: string | null;
+  supervisorUserId?: string | null;
+  entityIds?: string[];
+  mfaRequired?: boolean;
+};
+
+export type UpdateUserInput = {
+  fullName?: string;
+  email?: string;
+  password?: string;
+  role?: "CLIENT_ADMIN" | "SUBSIDIARY_MANAGER" | "STAFF";
+  status?: "ACTIVE" | "LOCKED" | "DEACTIVATED";
+  jobTitle?: string | null;
+  department?: string | null;
+  phone?: string | null;
+  supervisorUserId?: string | null;
+  entityIds?: string[];
+  mfaRequired?: boolean;
 };
 
 export type ReplaceDocumentVersionInput = {
@@ -700,7 +757,11 @@ export async function refreshGovernance(accessToken: string) {
     credentials: "include",
   });
 
-  return parseJson<{ message: string }>(response);
+  return parseJson<{
+    message: string;
+    entityCount: number;
+    escalatedNotifications: number;
+  }>(response);
 }
 
 export async function fetchNotifications(accessToken: string) {
@@ -710,6 +771,79 @@ export async function fetchNotifications(accessToken: string) {
   });
 
   return parseJson<NotificationsResponse>(response);
+}
+
+export async function escalateOverdueNotifications(accessToken: string) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/notifications/escalate-overdue`,
+    {
+      method: "POST",
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<{
+    message: string;
+    escalatedNotifications: number;
+  }>(response);
+}
+
+export async function fetchUsers(accessToken: string) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/users`, {
+    headers: buildHeaders(accessToken),
+    credentials: "include",
+  });
+
+  return parseJson<UsersResponse>(response);
+}
+
+export async function createUser(accessToken: string, input: CreateUserInput) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/users`, {
+    method: "POST",
+    headers: buildHeaders(accessToken, true),
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+
+  return parseJson<{
+    message: string;
+    users: UsersResponse["users"];
+  }>(response);
+}
+
+export async function updateUser(
+  accessToken: string,
+  userId: string,
+  input: UpdateUserInput,
+) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/users/${userId}`, {
+    method: "PATCH",
+    headers: buildHeaders(accessToken, true),
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+
+  return parseJson<{
+    message: string;
+    users: UsersResponse["users"];
+  }>(response);
+}
+
+export async function resetUserMfa(accessToken: string, userId: string) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/users/${userId}/reset-mfa`,
+    {
+      method: "POST",
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<{
+    message: string;
+    users: UsersResponse["users"];
+  }>(response);
 }
 
 export async function acknowledgeNotification(

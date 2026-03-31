@@ -12,6 +12,5 @@ coverage
 !.env.example
 apps/web/dist
 apps/api/dist
-packages/db/drizzle
 infra/postgres-data
 .data

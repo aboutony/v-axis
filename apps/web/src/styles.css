@@ -619,7 +619,12 @@ select {
 }
 
 .workspace-row-notification {
-  grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(0, 0.75fr)) auto;
+  grid-template-columns:
+    minmax(0, 1.3fr)
+    minmax(0, 0.8fr)
+    minmax(0, 1fr)
+    repeat(3, minmax(0, 0.68fr))
+    auto;
 }
 
 .workspace-row-document {
@@ -650,6 +655,63 @@ select {
   border-radius: 0.85rem;
   background: rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
+}
+
+.team-admin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 1rem;
+}
+
+.user-admin-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.user-admin-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1.2rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.user-admin-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.user-admin-fields label {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--text-secondary);
+}
+
+.user-admin-fields input,
+.user-admin-fields select {
+  width: 100%;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+}
+
+.user-admin-fields select[multiple] {
+  min-height: 8rem;
+}
+
+.user-admin-fields .checkbox-row input {
+  width: auto;
+}
+
+.user-admin-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1.2rem;
+  color: var(--text-secondary);
 }
 
 .category-editor-grid {
@@ -710,13 +772,15 @@ select {
   .workspace-grid,
   .hero-card,
   .mfa-setup-grid,
+  .team-admin-grid,
   .pillar-grid,
   .feature-grid,
   .decision-grid,
   .hero-metrics,
   .meta-grid,
   .workspace-metrics,
-  .category-editor-grid {
+  .category-editor-grid,
+  .user-admin-fields {
     grid-template-columns: 1fr;
   }
 

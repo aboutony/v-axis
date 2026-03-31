@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, notInArray } from "drizzle-orm";
 
 import { db } from "@vaxis/db";
 import {
+  auditLogs,
   documents,
   entityDocumentRules,
   entityRiskScores,
@@ -54,6 +55,11 @@ export type EntityRiskSnapshot = {
   gapCount: number;
 };
 
+export type EscalationDecision = {
+  userId: string;
+  reason: "supervisor" | "entity_manager" | "client_admin";
+};
+
 function toDate(input: string | Date | null) {
   if (!input) {
     return null;
@@ -84,7 +90,8 @@ export function getDaysRemaining(input: string | Date | null) {
   );
 
   return Math.floor(
-    (midnightTarget.getTime() - midnightToday.getTime()) / (1000 * 60 * 60 * 24),
+    (midnightTarget.getTime() - midnightToday.getTime()) /
+      (1000 * 60 * 60 * 24),
   );
 }
 
@@ -104,6 +111,69 @@ export function deriveDocumentStatusFromExpiry(input: string | Date | null) {
   }
 
   return "ACTIVE" as const;
+}
+
+export function isNotificationOverdue(
+  input: string | Date | null,
+  now = new Date(),
+) {
+  const dueDate = toDate(input);
+
+  if (!dueDate) {
+    return false;
+  }
+
+  const midnightToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  );
+  const midnightDueDate = new Date(
+    dueDate.getFullYear(),
+    dueDate.getMonth(),
+    dueDate.getDate(),
+  );
+
+  return midnightDueDate < midnightToday;
+}
+
+export function pickEscalationAssignee(input: {
+  currentAssignedTo: string | null;
+  supervisorUserId: string | null;
+  entityManagerUserId: string | null;
+  clientAdminUserId: string | null;
+}) {
+  if (
+    input.supervisorUserId &&
+    input.supervisorUserId !== input.currentAssignedTo
+  ) {
+    return {
+      userId: input.supervisorUserId,
+      reason: "supervisor",
+    } satisfies EscalationDecision;
+  }
+
+  if (
+    input.entityManagerUserId &&
+    input.entityManagerUserId !== input.currentAssignedTo
+  ) {
+    return {
+      userId: input.entityManagerUserId,
+      reason: "entity_manager",
+    } satisfies EscalationDecision;
+  }
+
+  if (
+    input.clientAdminUserId &&
+    input.clientAdminUserId !== input.currentAssignedTo
+  ) {
+    return {
+      userId: input.clientAdminUserId,
+      reason: "client_admin",
+    } satisfies EscalationDecision;
+  }
+
+  return null;
 }
 
 export function buildEntityRiskSnapshot(input: {
@@ -406,6 +476,12 @@ async function resolveAssignee(input: { tenantId: string; entityId: string }) {
   return clientAdmin?.userId ?? null;
 }
 
+function buildEscalationDueDate(now = new Date()) {
+  const result = new Date(now);
+  result.setDate(result.getDate() + 3);
+  return result.toISOString().slice(0, 10);
+}
+
 export async function syncEntityNotifications(input: {
   tenantId: string;
   entityId: string;
@@ -447,9 +523,7 @@ export async function syncEntityNotifications(input: {
       .limit(1);
 
     const nextStatus =
-      existing &&
-      existing.status !== "RESOLVED" &&
-      existing.status !== "CLOSED"
+      existing && existing.status !== "RESOLVED" && existing.status !== "CLOSED"
         ? existing.status
         : "PENDING";
 
@@ -467,8 +541,11 @@ export async function syncEntityNotifications(input: {
         message: payload.message,
         assignedTo: assigneeUserId,
         escalationLevel: alert.severity === "CRITICAL" ? 2 : 0,
-        dueDate: payload.dueDate ? payload.dueDate.toISOString().slice(0, 10) : null,
-        resolvedAt: nextStatus === "PENDING" ? null : existing?.resolvedAt ?? null,
+        dueDate: payload.dueDate
+          ? payload.dueDate.toISOString().slice(0, 10)
+          : null,
+        resolvedAt:
+          nextStatus === "PENDING" ? null : (existing?.resolvedAt ?? null),
       })
       .onConflictDoUpdate({
         target: [notifications.tenantId, notifications.sourceKey],
@@ -479,9 +556,12 @@ export async function syncEntityNotifications(input: {
           title: payload.title,
           message: payload.message,
           assignedTo: assigneeUserId,
-          dueDate: payload.dueDate ? payload.dueDate.toISOString().slice(0, 10) : null,
+          dueDate: payload.dueDate
+            ? payload.dueDate.toISOString().slice(0, 10)
+            : null,
           status: nextStatus,
-          resolvedAt: nextStatus === "PENDING" ? null : existing?.resolvedAt ?? null,
+          resolvedAt:
+            nextStatus === "PENDING" ? null : (existing?.resolvedAt ?? null),
           updatedAt: new Date(),
         },
       });
@@ -560,6 +640,157 @@ export async function syncEntityNotifications(input: {
   }
 }
 
+export async function escalateOverdueNotifications(input: {
+  tenantId: string;
+  actorUserId?: string | undefined;
+  ipAddress?: string | undefined;
+  userAgent?: string | undefined;
+}) {
+  const overdueCandidates = await db
+    .select()
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.tenantId, input.tenantId),
+        inArray(notifications.status, [
+          "PENDING",
+          "ACKNOWLEDGED",
+          "IN_PROGRESS",
+          "ESCALATED",
+        ]),
+      ),
+    );
+
+  const overdueNotifications = overdueCandidates.filter((notification) =>
+    isNotificationOverdue(notification.dueDate),
+  );
+
+  if (overdueNotifications.length === 0) {
+    return {
+      escalatedCount: 0,
+    };
+  }
+
+  const [activeUsers, assignments] = await Promise.all([
+    db
+      .select({
+        id: users.id,
+        role: users.role,
+        supervisorUserId: users.supervisorUserId,
+      })
+      .from(users)
+      .where(
+        and(
+          eq(users.tenantId, input.tenantId),
+          eq(users.status, "ACTIVE"),
+          isNull(users.deletedAt),
+        ),
+      ),
+    db
+      .select({
+        entityId: userEntityAssignments.entityId,
+        userId: userEntityAssignments.userId,
+        role: users.role,
+      })
+      .from(userEntityAssignments)
+      .innerJoin(users, eq(users.id, userEntityAssignments.userId))
+      .where(
+        and(
+          eq(users.tenantId, input.tenantId),
+          eq(users.status, "ACTIVE"),
+          isNull(users.deletedAt),
+        ),
+      ),
+  ]);
+
+  const activeUserMap = new Map(activeUsers.map((user) => [user.id, user]));
+  const [clientAdmin] = activeUsers.filter(
+    (user) => user.role === "CLIENT_ADMIN",
+  );
+  const clientAdminUserId = clientAdmin?.id ?? null;
+  const entityManagerByEntity = new Map<string, string>();
+
+  for (const assignment of assignments) {
+    if (assignment.role !== "SUBSIDIARY_MANAGER") {
+      continue;
+    }
+
+    if (!entityManagerByEntity.has(assignment.entityId)) {
+      entityManagerByEntity.set(assignment.entityId, assignment.userId);
+    }
+  }
+
+  let escalatedCount = 0;
+
+  for (const notification of overdueNotifications) {
+    const currentAssignee = notification.assignedTo
+      ? activeUserMap.get(notification.assignedTo)
+      : null;
+    const nextAssignee = pickEscalationAssignee({
+      currentAssignedTo: notification.assignedTo,
+      supervisorUserId: currentAssignee?.supervisorUserId ?? null,
+      entityManagerUserId: notification.entityId
+        ? (entityManagerByEntity.get(notification.entityId) ?? null)
+        : null,
+      clientAdminUserId,
+    });
+
+    if (!nextAssignee && !notification.assignedTo) {
+      continue;
+    }
+
+    const nextAssignedTo = nextAssignee?.userId ?? notification.assignedTo;
+
+    if (!nextAssignedTo) {
+      continue;
+    }
+
+    const [updated] = await db
+      .update(notifications)
+      .set({
+        status: "ESCALATED",
+        assignedTo: nextAssignedTo,
+        delegatedBy:
+          nextAssignee && notification.assignedTo !== nextAssignedTo
+            ? notification.assignedTo
+            : notification.delegatedBy,
+        escalationLevel: notification.escalationLevel + 1,
+        escalatedAt: new Date(),
+        dueDate: buildEscalationDueDate(),
+        updatedAt: new Date(),
+      })
+      .where(eq(notifications.id, notification.id))
+      .returning();
+
+    if (!updated) {
+      continue;
+    }
+
+    escalatedCount += 1;
+
+    await db.insert(auditLogs).values({
+      tenantId: input.tenantId,
+      userId: input.actorUserId ?? null,
+      eventType: "notification.escalated",
+      resourceType: "NOTIFICATION",
+      resourceId: updated.id,
+      ipAddress: input.ipAddress,
+      userAgent: input.userAgent,
+      metadata: {
+        previousAssignedTo: notification.assignedTo,
+        nextAssignedTo,
+        previousEscalationLevel: notification.escalationLevel,
+        nextEscalationLevel: updated.escalationLevel,
+        reason: nextAssignee?.reason ?? "retained_assignee",
+      },
+    });
+  }
+
+  return {
+    escalatedCount,
+  };
+}
+
 export async function refreshEntityGovernance(input: {
   tenantId: string;
   entityId: string;
@@ -586,4 +817,8 @@ export async function refreshTenantGovernance(input: { tenantId: string }) {
       entityId: entity.id,
     });
   }
+
+  return {
+    entityCount: entityRows.length,
+  };
 }

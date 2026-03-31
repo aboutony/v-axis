@@ -9,9 +9,11 @@ import {
   entities,
   entityDocumentRules,
   notifications,
+  users,
 } from "@vaxis/db/schema";
 
 import {
+  escalateOverdueNotifications,
   refreshEntityGovernance,
   refreshTenantGovernance,
 } from "../lib/governance";
@@ -250,14 +252,54 @@ export const governanceRoutes: FastifyPluginAsync = async (fastify) => {
       return;
     }
 
-    await refreshTenantGovernance({
+    const refreshResult = await refreshTenantGovernance({
       tenantId: request.user.tenantId,
+    });
+    const escalationResult = await escalateOverdueNotifications({
+      tenantId: request.user.tenantId,
+      actorUserId: request.user.sub,
+      ipAddress: request.ip,
+      userAgent: Array.isArray(request.headers["user-agent"])
+        ? request.headers["user-agent"].join(" ")
+        : request.headers["user-agent"],
     });
 
     return {
       message: "Tenant governance state refreshed.",
+      entityCount: refreshResult.entityCount,
+      escalatedNotifications: escalationResult.escalatedCount,
     };
   });
+
+  fastify.post(
+    "/api/v1/notifications/escalate-overdue",
+    async (request, reply) => {
+      if (!(await ensureAuthenticated(request, reply))) {
+        return;
+      }
+
+      if (!ensurePermission(request, reply, "NOTIFICATION_MANAGE")) {
+        return;
+      }
+
+      const escalationResult = await escalateOverdueNotifications({
+        tenantId: request.user.tenantId,
+        actorUserId: request.user.sub,
+        ipAddress: request.ip,
+        userAgent: Array.isArray(request.headers["user-agent"])
+          ? request.headers["user-agent"].join(" ")
+          : request.headers["user-agent"],
+      });
+
+      return {
+        message:
+          escalationResult.escalatedCount > 0
+            ? "Overdue notifications escalated."
+            : "No overdue notifications required escalation.",
+        escalatedNotifications: escalationResult.escalatedCount,
+      };
+    },
+  );
 
   fastify.get("/api/v1/notifications", async (request, reply) => {
     if (!(await ensureAuthenticated(request, reply))) {
@@ -273,75 +315,94 @@ export const governanceRoutes: FastifyPluginAsync = async (fastify) => {
       .select({ id: entities.id, entityName: entities.entityName })
       .from(entities)
       .where(eq(entities.tenantId, request.user.tenantId));
+    const userRows = await db
+      .select({ id: users.id, fullName: users.fullName, email: users.email })
+      .from(users)
+      .where(eq(users.tenantId, request.user.tenantId));
 
     const entityMap = new Map(entityRows.map((entity) => [entity.id, entity]));
+    const userMap = new Map(userRows.map((user) => [user.id, user]));
 
     return {
       notifications: notificationRows
         .map((notification) => ({
           ...notification,
           entityName: notification.entityId
-            ? entityMap.get(notification.entityId)?.entityName ?? "Unknown entity"
+            ? (entityMap.get(notification.entityId)?.entityName ??
+              "Unknown entity")
             : "No entity",
+          assignedToName: notification.assignedTo
+            ? (userMap.get(notification.assignedTo)?.fullName ?? null)
+            : null,
+          assignedToEmail: notification.assignedTo
+            ? (userMap.get(notification.assignedTo)?.email ?? null)
+            : null,
+          delegatedByName: notification.delegatedBy
+            ? (userMap.get(notification.delegatedBy)?.fullName ?? null)
+            : null,
         }))
         .sort(
           (left, right) =>
-            new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+            new Date(right.createdAt).getTime() -
+            new Date(left.createdAt).getTime(),
         ),
     };
   });
 
-  fastify.patch("/api/v1/notifications/:id/acknowledge", async (request, reply) => {
-    if (!(await ensureAuthenticated(request, reply))) {
-      return;
-    }
+  fastify.patch(
+    "/api/v1/notifications/:id/acknowledge",
+    async (request, reply) => {
+      if (!(await ensureAuthenticated(request, reply))) {
+        return;
+      }
 
-    if (!ensurePermission(request, reply, "NOTIFICATION_MANAGE")) {
-      return;
-    }
+      if (!ensurePermission(request, reply, "NOTIFICATION_MANAGE")) {
+        return;
+      }
 
-    const { id } = notificationParamsSchema.parse(request.params);
+      const { id } = notificationParamsSchema.parse(request.params);
 
-    const [updated] = await db
-      .update(notifications)
-      .set({
-        status: "ACKNOWLEDGED",
-        acknowledgedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(notifications.id, id),
-          eq(notifications.tenantId, request.user.tenantId),
-        ),
-      )
-      .returning();
+      const [updated] = await db
+        .update(notifications)
+        .set({
+          status: "ACKNOWLEDGED",
+          acknowledgedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(notifications.id, id),
+            eq(notifications.tenantId, request.user.tenantId),
+          ),
+        )
+        .returning();
 
-    if (!updated) {
-      return reply.code(404).send({
-        error: "NOTIFICATION_NOT_FOUND",
-        message: "The notification was not found in this tenant.",
+      if (!updated) {
+        return reply.code(404).send({
+          error: "NOTIFICATION_NOT_FOUND",
+          message: "The notification was not found in this tenant.",
+        });
+      }
+
+      await db.insert(auditLogs).values({
+        tenantId: request.user.tenantId,
+        userId: request.user.sub,
+        eventType: "notification.acknowledged",
+        resourceType: "NOTIFICATION",
+        resourceId: updated.id,
+        ipAddress: request.ip,
+        userAgent: request.headers["user-agent"],
+        metadata: {
+          sourceKey: updated.sourceKey,
+        },
       });
-    }
 
-    await db.insert(auditLogs).values({
-      tenantId: request.user.tenantId,
-      userId: request.user.sub,
-      eventType: "notification.acknowledged",
-      resourceType: "NOTIFICATION",
-      resourceId: updated.id,
-      ipAddress: request.ip,
-      userAgent: request.headers["user-agent"],
-      metadata: {
-        sourceKey: updated.sourceKey,
-      },
-    });
-
-    return {
-      message: "Notification acknowledged.",
-      notification: updated,
-    };
-  });
+      return {
+        message: "Notification acknowledged.",
+        notification: updated,
+      };
+    },
+  );
 
   fastify.patch("/api/v1/notifications/:id/resolve", async (request, reply) => {
     if (!(await ensureAuthenticated(request, reply))) {

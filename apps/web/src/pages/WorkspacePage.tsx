@@ -5,37 +5,77 @@ import {
   acknowledgeNotification,
   ApiError,
   beginMfaEnrollment,
+  createUser,
   createEntity,
   createRule,
   deleteRule,
+  escalateOverdueNotifications,
   fetchDashboardSummary,
   fetchDocuments,
   fetchDocumentTypes,
   fetchNotifications,
   fetchRules,
   fetchTaxonomy,
+  fetchUsers,
   login,
   refreshGovernance,
+  resetUserMfa,
   registerDocument,
   replaceDocumentFile,
   resolveNotification,
   toggleCriticalMaster,
   updateCategory,
+  updateUser,
   uploadDocument,
   verifyTotpEnrollment,
   type AuthSession,
+  type CreateUserInput,
   type CreateEntityInput,
   type MfaEnrollmentResponse,
   type RegisterDocumentInput,
   type RuleInput,
+  type UpdateUserInput,
+  type UsersResponse,
 } from "../lib/api";
 
 const sessionStorageKey = "vaxis.session";
+
+function readSelectedValues(select: HTMLSelectElement) {
+  return Array.from(select.selectedOptions).map((option) => option.value);
+}
 
 type WorkspacePageProps = {
   onSessionChange: (session: AuthSession | null) => void;
   session: AuthSession | null;
 };
+
+type UserDraft = {
+  fullName: string;
+  email: string;
+  role: CreateUserInput["role"];
+  status: "ACTIVE" | "LOCKED" | "DEACTIVATED";
+  jobTitle: string;
+  department: string;
+  phone: string;
+  supervisorUserId: string | null;
+  entityIds: string[];
+  mfaRequired: boolean;
+};
+
+function buildUserDraft(user: UsersResponse["users"][number]): UserDraft {
+  return {
+    fullName: user.fullName,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    jobTitle: user.jobTitle ?? "",
+    department: user.department ?? "",
+    phone: user.phone ?? "",
+    supervisorUserId: user.supervisorUserId,
+    entityIds: user.assignedEntities.map((entity) => entity.id),
+    mfaRequired: user.mfaRequired,
+  };
+}
 
 export function WorkspacePage({
   onSessionChange,
@@ -87,6 +127,19 @@ export function WorkspacePage({
     isMandatory: true,
     country: "",
   });
+  const [userForm, setUserForm] = useState<CreateUserInput>({
+    fullName: "",
+    email: "",
+    password: "",
+    role: "STAFF",
+    jobTitle: "",
+    department: "",
+    phone: "",
+    supervisorUserId: null,
+    entityIds: [],
+    mfaRequired: true,
+  });
+  const [userDrafts, setUserDrafts] = useState<Record<string, UserDraft>>({});
 
   const accessToken = session?.accessToken;
   const mfaSetupRequired = Boolean(
@@ -128,9 +181,15 @@ export function WorkspacePage({
     queryFn: () => fetchNotifications(accessToken!),
     enabled: Boolean(accessToken),
   });
+  const usersQuery = useQuery({
+    queryKey: ["workspace-users", accessToken],
+    queryFn: () => fetchUsers(accessToken!),
+    enabled: Boolean(accessToken),
+  });
 
   const categories = taxonomyQuery.data?.categories ?? [];
   const allEntities = categories.flatMap((category) => category.entities);
+  const workspaceUsers = usersQuery.data?.users ?? [];
 
   const [categoryEdits, setCategoryEdits] = useState<
     Record<
@@ -195,6 +254,14 @@ export function WorkspacePage({
     }
   }, [documentTypesQuery.data?.documentTypes, ruleForm.documentTypeId]);
 
+  useEffect(() => {
+    const nextDrafts = Object.fromEntries(
+      workspaceUsers.map((user) => [user.id, buildUserDraft(user)]),
+    );
+
+    setUserDrafts(nextDrafts);
+  }, [workspaceUsers]);
+
   function persistSession(nextSession: AuthSession | null) {
     if (nextSession) {
       localStorage.setItem(sessionStorageKey, JSON.stringify(nextSession));
@@ -255,6 +322,9 @@ export function WorkspacePage({
       }),
       queryClient.invalidateQueries({
         queryKey: ["workspace-notifications", accessToken],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["workspace-users", accessToken],
       }),
     ]);
   };
@@ -378,6 +448,37 @@ export function WorkspacePage({
   const resolveMutation = useMutation({
     mutationFn: (notificationId: string) =>
       resolveNotification(accessToken!, notificationId),
+    onSuccess: refreshWorkspace,
+  });
+  const createUserMutation = useMutation({
+    mutationFn: (input: CreateUserInput) => createUser(accessToken!, input),
+    onSuccess: async () => {
+      await refreshWorkspace();
+      setUserForm({
+        fullName: "",
+        email: "",
+        password: "",
+        role: "STAFF",
+        jobTitle: "",
+        department: "",
+        phone: "",
+        supervisorUserId: null,
+        entityIds: [],
+        mfaRequired: true,
+      });
+    },
+  });
+  const updateUserMutation = useMutation({
+    mutationFn: (input: { userId: string; payload: UpdateUserInput }) =>
+      updateUser(accessToken!, input.userId, input.payload),
+    onSuccess: refreshWorkspace,
+  });
+  const resetUserMfaMutation = useMutation({
+    mutationFn: (userId: string) => resetUserMfa(accessToken!, userId),
+    onSuccess: refreshWorkspace,
+  });
+  const escalateNotificationsMutation = useMutation({
+    mutationFn: () => escalateOverdueNotifications(accessToken!),
     onSuccess: refreshWorkspace,
   });
 
@@ -656,6 +757,18 @@ export function WorkspacePage({
           </button>
         </div>
 
+        {refreshGovernanceMutation.data ? (
+          <div className="success-panel">
+            <h4>{refreshGovernanceMutation.data.message}</h4>
+            <p>
+              Refreshed {refreshGovernanceMutation.data.entityCount} entity risk
+              profiles and escalated{" "}
+              {refreshGovernanceMutation.data.escalatedNotifications} overdue
+              notification(s).
+            </p>
+          </div>
+        ) : null}
+
         <div className="workspace-table">
           {(dashboardQuery.data?.entities ?? []).map((entity) => (
             <div className="workspace-row" key={entity.id}>
@@ -906,6 +1019,383 @@ export function WorkspacePage({
             </p>
           ) : null}
         </form>
+      </section>
+
+      <section className="card workspace-header-card">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">Team and Ownership</p>
+            <h3>Assign responsibility before alerts need to escalate</h3>
+          </div>
+        </div>
+
+        <div className="team-admin-grid">
+          <form
+            className="launch-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              createUserMutation.mutate(userForm);
+            }}
+          >
+            <label>
+              Full name
+              <input
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    fullName: event.target.value,
+                  }))
+                }
+                value={userForm.fullName}
+              />
+            </label>
+
+            <label>
+              Email
+              <input
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
+                }
+                type="email"
+                value={userForm.email}
+              />
+            </label>
+
+            <label>
+              Temporary password
+              <input
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    password: event.target.value,
+                  }))
+                }
+                type="password"
+                value={userForm.password}
+              />
+            </label>
+
+            <label>
+              Role
+              <select
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    role: event.target.value as CreateUserInput["role"],
+                  }))
+                }
+                value={userForm.role}
+              >
+                <option value="CLIENT_ADMIN">Client admin</option>
+                <option value="SUBSIDIARY_MANAGER">Subsidiary manager</option>
+                <option value="STAFF">Staff</option>
+              </select>
+            </label>
+
+            <label>
+              Job title
+              <input
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    jobTitle: event.target.value,
+                  }))
+                }
+                value={userForm.jobTitle ?? ""}
+              />
+            </label>
+
+            <label>
+              Supervisor
+              <select
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    supervisorUserId: event.target.value || null,
+                  }))
+                }
+                value={userForm.supervisorUserId ?? ""}
+              >
+                <option value="">No supervisor</option>
+                {workspaceUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.fullName} ({user.role})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Entity assignments
+              <select
+                multiple
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    entityIds: readSelectedValues(event.target),
+                  }))
+                }
+                size={Math.min(Math.max(allEntities.length, 2), 6)}
+                value={userForm.entityIds ?? []}
+              >
+                {allEntities.map((entity) => (
+                  <option key={entity.id} value={entity.id}>
+                    {entity.entityName} ({entity.entityCode})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="checkbox-row">
+              <input
+                checked={Boolean(userForm.mfaRequired)}
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    mfaRequired: event.target.checked,
+                  }))
+                }
+                type="checkbox"
+              />
+              Force MFA enrollment
+            </label>
+
+            <button
+              className="primary-button"
+              disabled={createUserMutation.isPending}
+              type="submit"
+            >
+              {createUserMutation.isPending
+                ? "Creating user..."
+                : "Create user"}
+            </button>
+
+            {createUserMutation.error ? (
+              <p className="form-feedback error">
+                {createUserMutation.error.message}
+              </p>
+            ) : null}
+          </form>
+
+          <div className="user-admin-list">
+            {workspaceUsers.map((user) => {
+              const draft = userDrafts[user.id] ?? buildUserDraft(user);
+
+              return (
+                <article className="user-admin-card" key={user.id}>
+                  <div className="category-editor-top">
+                    <div>
+                      <strong>{user.fullName}</strong>
+                      <p className="helper-copy">
+                        {user.role} - {user.openNotificationCount} open tasks
+                      </p>
+                    </div>
+                    <span className="meta-pill">
+                      {user.mfaEnabled ? "MFA enabled" : "MFA pending"}
+                    </span>
+                  </div>
+
+                  <div className="user-admin-fields">
+                    <label>
+                      Full name
+                      <input
+                        onChange={(event) =>
+                          setUserDrafts((current) => ({
+                            ...current,
+                            [user.id]: {
+                              ...draft,
+                              fullName: event.target.value,
+                            },
+                          }))
+                        }
+                        value={draft.fullName ?? ""}
+                      />
+                    </label>
+
+                    <label>
+                      Email
+                      <input
+                        onChange={(event) =>
+                          setUserDrafts((current) => ({
+                            ...current,
+                            [user.id]: {
+                              ...draft,
+                              email: event.target.value,
+                            },
+                          }))
+                        }
+                        type="email"
+                        value={draft.email ?? ""}
+                      />
+                    </label>
+
+                    <label>
+                      Role
+                      <select
+                        onChange={(event) =>
+                          setUserDrafts((current) => ({
+                            ...current,
+                            [user.id]: {
+                              ...draft,
+                              role: event.target.value as UserDraft["role"],
+                            },
+                          }))
+                        }
+                        value={draft.role ?? user.role}
+                      >
+                        <option value="CLIENT_ADMIN">Client admin</option>
+                        <option value="SUBSIDIARY_MANAGER">
+                          Subsidiary manager
+                        </option>
+                        <option value="STAFF">Staff</option>
+                      </select>
+                    </label>
+
+                    <label>
+                      Status
+                      <select
+                        onChange={(event) =>
+                          setUserDrafts((current) => ({
+                            ...current,
+                            [user.id]: {
+                              ...draft,
+                              status: event.target.value as UserDraft["status"],
+                            },
+                          }))
+                        }
+                        value={draft.status ?? user.status}
+                      >
+                        <option value="ACTIVE">Active</option>
+                        <option value="LOCKED">Locked</option>
+                        <option value="DEACTIVATED">Deactivated</option>
+                      </select>
+                    </label>
+
+                    <label>
+                      Supervisor
+                      <select
+                        onChange={(event) =>
+                          setUserDrafts((current) => ({
+                            ...current,
+                            [user.id]: {
+                              ...draft,
+                              supervisorUserId: event.target.value || null,
+                            },
+                          }))
+                        }
+                        value={draft.supervisorUserId ?? ""}
+                      >
+                        <option value="">No supervisor</option>
+                        {workspaceUsers
+                          .filter((candidate) => candidate.id !== user.id)
+                          .map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>
+                              {candidate.fullName}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+
+                    <label>
+                      Entity assignments
+                      <select
+                        multiple
+                        onChange={(event) =>
+                          setUserDrafts((current) => ({
+                            ...current,
+                            [user.id]: {
+                              ...draft,
+                              entityIds: readSelectedValues(event.target),
+                            },
+                          }))
+                        }
+                        size={Math.min(Math.max(allEntities.length, 2), 5)}
+                        value={draft.entityIds ?? []}
+                      >
+                        {allEntities.map((entity) => (
+                          <option key={entity.id} value={entity.id}>
+                            {entity.entityName} ({entity.entityCode})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="checkbox-row">
+                      <input
+                        checked={Boolean(draft.mfaRequired)}
+                        onChange={(event) =>
+                          setUserDrafts((current) => ({
+                            ...current,
+                            [user.id]: {
+                              ...draft,
+                              mfaRequired: event.target.checked,
+                            },
+                          }))
+                        }
+                        type="checkbox"
+                      />
+                      MFA required
+                    </label>
+                  </div>
+
+                  <div className="user-admin-summary">
+                    <span>
+                      Assignments:{" "}
+                      {user.assignedEntities.length > 0
+                        ? user.assignedEntities
+                            .map((entity) => entity.entityCode)
+                            .join(", ")
+                        : "None"}
+                    </span>
+                    <span>
+                      Supervisor: {user.supervisorName ?? "Not assigned"}
+                    </span>
+                    <span>Last login: {formatDateTime(user.lastLoginAt)}</span>
+                  </div>
+
+                  <div className="workspace-row-actions workspace-row-actions-wrap">
+                    <button
+                      className="secondary-button"
+                      disabled={updateUserMutation.isPending}
+                      onClick={() =>
+                        updateUserMutation.mutate({
+                          userId: user.id,
+                          payload: draft,
+                        })
+                      }
+                      type="button"
+                    >
+                      Save user
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={resetUserMfaMutation.isPending}
+                      onClick={() => resetUserMfaMutation.mutate(user.id)}
+                      type="button"
+                    >
+                      Reset MFA
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+
+        {updateUserMutation.error ? (
+          <p className="form-feedback error">
+            {updateUserMutation.error.message}
+          </p>
+        ) : null}
+
+        {resetUserMfaMutation.error ? (
+          <p className="form-feedback error">
+            {resetUserMfaMutation.error.message}
+          </p>
+        ) : null}
       </section>
 
       <section className="card">
@@ -1234,7 +1724,7 @@ export function WorkspacePage({
               <div>
                 <strong>{document.dnaCode}</strong>
                 <p className="helper-copy">
-                  {document.documentTypeLabel} •{" "}
+                  {document.documentTypeLabel} -{" "}
                   {document.isCriticalMaster
                     ? "Critical master"
                     : "Standard record"}
@@ -1332,6 +1822,19 @@ export function WorkspacePage({
           </div>
         </div>
 
+        <div className="workspace-actions">
+          <button
+            className="secondary-button"
+            disabled={escalateNotificationsMutation.isPending}
+            onClick={() => escalateNotificationsMutation.mutate()}
+            type="button"
+          >
+            {escalateNotificationsMutation.isPending
+              ? "Escalating..."
+              : "Escalate overdue notifications"}
+          </button>
+        </div>
+
         <div className="workspace-table">
           {(notificationsQuery.data?.notifications ?? []).map(
             (notification) => (
@@ -1339,10 +1842,22 @@ export function WorkspacePage({
                 className="workspace-row workspace-row-notification"
                 key={notification.id}
               >
-                <strong>{notification.title}</strong>
+                <div>
+                  <strong>{notification.title}</strong>
+                  <p className="helper-copy">{notification.message}</p>
+                </div>
                 <span>{notification.entityName}</span>
+                <span>
+                  {notification.assignedToName
+                    ? `${notification.assignedToName} (${notification.assignedToEmail})`
+                    : "Unassigned"}
+                </span>
                 <span>{notification.severity}</span>
                 <span>{notification.status}</span>
+                <span>
+                  Due {formatDate(notification.dueDate)} / L
+                  {notification.escalationLevel}
+                </span>
                 <div className="workspace-row-actions">
                   <button
                     className="secondary-button"
@@ -1365,9 +1880,51 @@ export function WorkspacePage({
             ),
           )}
         </div>
+
+        {escalateNotificationsMutation.data ? (
+          <div className="success-panel">
+            <h4>{escalateNotificationsMutation.data.message}</h4>
+            <p>
+              {escalateNotificationsMutation.data.escalatedNotifications}{" "}
+              notification(s) were escalated in the latest pass.
+            </p>
+          </div>
+        ) : null}
+
+        {escalateNotificationsMutation.error ? (
+          <p className="form-feedback error">
+            {escalateNotificationsMutation.error.message}
+          </p>
+        ) : null}
       </section>
     </div>
   );
+}
+
+function formatDate(value: string | null) {
+  if (!value) {
+    return "none";
+  }
+
+  return new Date(value).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return "No login yet";
+  }
+
+  return new Date(value).toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function MetricBox({ label, value }: { label: string; value: string }) {

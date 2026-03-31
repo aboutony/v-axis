@@ -7,8 +7,8 @@ V-AXIS is a multi-tenant governance platform for high-trust document operations 
 - Monorepo structure with `apps/web`, `apps/api`, `packages/domain`, and `packages/db`
 - Shared domain package for roles, permissions, document taxonomy, and DNA-code utilities
 - PostgreSQL schema for tenants, users, taxonomy, documents, sessions, notifications, audit logs, risk scores, connectors, and webhooks
-- Fastify API with OpenAPI docs, tenant bootstrap, JWT sessions, TOTP MFA enrollment and enforcement, taxonomy controls, governance routes, and vault-style document upload/version endpoints
-- React/Vite command-center shell with a real bootstrap form, tenant workspace, MFA setup, taxonomy controls, document registration, file uploads, dashboard views, rules management, and actionable notifications
+- Fastify API with OpenAPI docs, tenant bootstrap, JWT sessions, TOTP MFA enrollment and enforcement, taxonomy controls, user administration, governance routes, escalation workflows, and vault-style document upload/version endpoints
+- React/Vite command-center shell with a real bootstrap form, tenant workspace, MFA setup, taxonomy controls, user ownership management, document registration, file uploads, dashboard views, rules management, and actionable notifications
 - Docker Compose stack for PostgreSQL, Redis, and Mailpit
 
 ## Stack
@@ -71,8 +71,9 @@ npm run dev
 2. Sign into the Workspace screen with the new tenant admin.
 3. Complete MFA setup for the tenant admin on first login.
 4. Rename category slots, add entities, and register or upload seeded documents.
-5. Define entity document rules, review the generated notification queue, and upload replacement versions where needed.
-6. Verify dashboard summaries and risk scoring against live database data.
+5. Create tenant users, assign supervisors and entity ownership, and enforce MFA enrollment.
+6. Define entity document rules, review the generated notification queue, and escalate overdue work where needed.
+7. Verify dashboard summaries and risk scoring against live database data.
 
 ## Repo Notes
 

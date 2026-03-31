@@ -1,6 +1,5 @@
 export const platformName = "V-AXIS";
-export const platformTagline =
-  "Virtual Asset eXchange & Intelligence System";
+export const platformTagline = "Virtual Asset eXchange & Intelligence System";
 
 export const categorySlots = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 
@@ -24,11 +23,7 @@ export const permissionFlags = [
   "AUDIT_VIEW",
 ] as const;
 
-export const tenantStatuses = [
-  "ACTIVE",
-  "SUSPENDED",
-  "DEPROVISIONED",
-] as const;
+export const tenantStatuses = ["ACTIVE", "SUSPENDED", "DEPROVISIONED"] as const;
 
 export const tenantRegions = ["GCC", "INTERNATIONAL"] as const;
 export const tenantPlanTiers = ["STANDARD", "ENTERPRISE"] as const;
@@ -37,12 +32,7 @@ export const vaultTypes = ["SAAS", "PRIVATE_CLOUD", "ON_PREMISE"] as const;
 export const languageCodes = ["EN", "AR"] as const;
 export const themeModes = ["LIGHT", "DARK", "SYSTEM"] as const;
 
-export const entityTypes = [
-  "SUBSIDIARY",
-  "JV",
-  "ASSOCIATE",
-  "BRANCH",
-] as const;
+export const entityTypes = ["SUBSIDIARY", "JV", "ASSOCIATE", "BRANCH"] as const;
 
 export const documentSectors = ["GOV", "B2B", "INTERNAL"] as const;
 
@@ -77,11 +67,7 @@ export const severityLevels = [
   "CRITICAL",
 ] as const;
 
-export const offlineSyncStatuses = [
-  "PENDING",
-  "SYNCED",
-  "FAILED",
-] as const;
+export const offlineSyncStatuses = ["PENDING", "SYNCED", "FAILED"] as const;
 
 export const connectorTypes = [
   "ERP",
@@ -109,5 +95,6 @@ export const activityEventTypes = [
   "user.login.succeeded",
   "user.login.failed",
   "user.created",
+  "user.updated",
   "tenant.bootstrapped",
 ] as const;
