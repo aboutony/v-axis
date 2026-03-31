@@ -60,12 +60,14 @@ body {
 
 body,
 button,
-input {
+input,
+select {
   font-family: var(--font-body);
 }
 
 button,
-input {
+input,
+select {
   font-size: 1rem;
 }
 
@@ -413,7 +415,21 @@ input {
   color: var(--text-primary);
 }
 
+.launch-form select {
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+}
+
 .launch-form input:focus {
+  outline: 2px solid rgba(95, 178, 255, 0.4);
+  outline-offset: 2px;
+}
+
+.launch-form select:focus {
   outline: 2px solid rgba(95, 178, 255, 0.4);
   outline-offset: 2px;
 }
@@ -428,6 +444,15 @@ input {
   font-family: var(--font-display);
   font-size: 1rem;
   font-weight: 700;
+}
+
+.secondary-button {
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  cursor: pointer;
 }
 
 .primary-button:disabled {
@@ -477,16 +502,101 @@ input {
   gap: 1rem;
 }
 
+.workspace-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.workspace-header-card {
+  grid-column: 1 / -1;
+}
+
+.workspace-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.workspace-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.workspace-table {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.workspace-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) repeat(4, minmax(0, 0.75fr));
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+}
+
+.workspace-row strong {
+  color: var(--text-primary);
+}
+
+.category-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.category-editor-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1.2rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.category-editor-card label {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--text-secondary);
+}
+
+.category-editor-card input {
+  width: 100%;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+}
+
+.category-editor-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.auth-card {
+  max-width: 38rem;
+}
+
 @media (max-width: 1100px) {
   .app-shell,
   .launchpad-grid,
   .architecture-grid,
+  .workspace-grid,
   .hero-card,
   .pillar-grid,
   .feature-grid,
   .decision-grid,
   .hero-metrics,
-  .meta-grid {
+  .meta-grid,
+  .workspace-metrics,
+  .category-editor-grid {
     grid-template-columns: 1fr;
   }
 
@@ -510,12 +620,17 @@ input {
   }
 
   .document-type-row,
-  .topbar-actions {
+  .topbar-actions,
+  .workspace-header {
     flex-direction: column;
     align-items: stretch;
   }
 
   .document-type-meta {
     justify-content: flex-start;
+  }
+
+  .workspace-row {
+    grid-template-columns: 1fr;
   }
 }

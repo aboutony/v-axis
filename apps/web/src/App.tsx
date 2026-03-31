@@ -7,9 +7,11 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import {
   bootstrapClient,
   fetchPlatformBootstrap,
+  type AuthSession,
   type BootstrapClientInput,
   type PlatformBootstrapResponse,
 } from "./lib/api";
+import { WorkspacePage, loadStoredSession } from "./pages/WorkspacePage";
 
 type ThemeMode = "light" | "dark";
 
@@ -18,6 +20,11 @@ const navigationItems = [
     label: "Command Center",
     to: "/",
     eyebrow: "Now",
+  },
+  {
+    label: "Workspace",
+    to: "/workspace",
+    eyebrow: "Operate",
   },
   {
     label: "Launchpad",
@@ -60,10 +67,15 @@ const stackHighlights = [
 
 export function App() {
   const [theme, setTheme] = useState<ThemeMode>("dark");
+  const [session, setSession] = useState<AuthSession | null>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    setSession(loadStoredSession());
+  }, []);
 
   const platformQuery = useQuery({
     queryKey: ["platform-bootstrap"],
@@ -118,7 +130,11 @@ export function App() {
 
           <div className="topbar-actions">
             <div className="status-chip">
-              {platformQuery.isLoading ? "Loading platform brief" : "Foundation active"}
+              {session
+                ? `Operating ${session.tenant.clientName}`
+                : platformQuery.isLoading
+                  ? "Loading platform brief"
+                  : "Foundation active"}
             </div>
 
             <button
@@ -137,6 +153,12 @@ export function App() {
           <Route
             path="/"
             element={<CommandCenterPage platformQuery={platformQuery} />}
+          />
+          <Route
+            path="/workspace"
+            element={
+              <WorkspacePage onSessionChange={setSession} session={session} />
+            }
           />
           <Route
             path="/launchpad"
@@ -169,10 +191,10 @@ function CommandCenterPage({
             sovereign operating system for document governance.
           </h3>
           <p className="hero-body">
-            We are not treating this like a generic DMS. The platform is being
-            shaped around predictive compliance, tenant-aware security, and a
-            command-center experience that pushes risk to the surface before it
-            becomes operational pain.
+            The platform now spans a serious monorepo foundation, a tenant-aware
+            API, a shared product-domain package, and a working operator
+            workspace that can create tenants, manage taxonomy, register
+            documents, and surface governance health.
           </p>
         </div>
 
@@ -213,29 +235,27 @@ function CommandCenterPage({
       <section className="card">
         <div className="card-header">
           <div>
-            <p className="eyebrow">Governance Baseline</p>
-            <h3>Foundation contracts already encoded</h3>
+            <p className="eyebrow">Operational Slice</p>
+            <h3>What is live in this delivery</h3>
           </div>
         </div>
 
         <div className="feature-grid">
           <FeatureCard
-            title="Identity"
-            body={bootstrap?.security.auth ?? "JWT sessions with refresh rotation"}
+            title="Tenant Bootstrap"
+            body="Create the first client environment and client admin with seeded category slots."
           />
           <FeatureCard
-            title="Encryption"
-            body={
-              bootstrap?.security.encryption ?? "AES-256 at rest and TLS 1.3 in transit"
-            }
+            title="Workspace Login"
+            body="Authenticate into a tenant and keep a local operator session for the control plane."
           />
           <FeatureCard
-            title="Residency"
-            body={bootstrap?.security.residency ?? "GCC-ready deployment controls"}
+            title="Taxonomy Control"
+            body="Rename categories, add entities, and shape the holding structure from the app."
           />
           <FeatureCard
-            title="Multi-tenancy"
-            body="Tenant-aware schema with a clean path to stricter enterprise isolation."
+            title="Document Intake"
+            body="Register records with validation, DNA-code generation, version scaffolding, and live risk recalculation."
           />
         </div>
       </section>
@@ -419,8 +439,8 @@ function LaunchpadPage({
           <li>Tenant bootstrap with seeded category slots</li>
           <li>Client admin creation with permission baseline</li>
           <li>JWT access tokens and refresh token rotation</li>
-          <li>Drizzle schema for taxonomy, documents, alerts, audit, vault, and integrations</li>
-          <li>API docs exposed through Swagger UI</li>
+          <li>Protected routes for taxonomy, documents, and dashboard summaries</li>
+          <li>Frontend workspace for operating a live tenant</li>
         </ul>
 
         <div className="stack-panel">

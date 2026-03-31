@@ -8,7 +8,7 @@ V-AXIS is a multi-tenant governance platform for high-trust document operations 
 - Shared domain package for roles, permissions, document taxonomy, and DNA-code utilities
 - PostgreSQL schema for tenants, users, taxonomy, documents, sessions, notifications, audit logs, risk scores, connectors, and webhooks
 - Fastify API with OpenAPI docs, tenant bootstrap, login, refresh, logout, and taxonomy read endpoints
-- React/Vite command-center shell with a real bootstrap form and architecture views
+- React/Vite command-center shell with a real bootstrap form, tenant workspace, taxonomy controls, document registration, and dashboard views
 - Docker Compose stack for PostgreSQL, Redis, and Mailpit
 
 ## Stack
@@ -62,10 +62,10 @@ npm run dev
 ## Current Priority Path
 
 1. Bootstrap the first client tenant from the Launchpad screen.
-2. Add protected CRUD flows for taxonomy and entity management.
-3. Implement document upload, metadata validation, and versioning.
-4. Add predictive expiry jobs, gap rules, and dashboard summaries.
-5. Harden RBAC, MFA flows, and audit-trail coverage.
+2. Sign into the Workspace screen with the new tenant admin.
+3. Rename category slots, add entities, and register seeded documents.
+4. Verify dashboard summaries and risk scoring against live database data.
+5. Harden RBAC, MFA flows, file upload mechanics, and audit-trail coverage.
 
 ## Repo Notes
 

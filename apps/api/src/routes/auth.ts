@@ -443,6 +443,16 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    return { user };
+    const [tenant] = await db
+      .select({
+        id: tenants.id,
+        clientName: tenants.clientName,
+        slug: tenants.slug,
+      })
+      .from(tenants)
+      .where(eq(tenants.id, user.tenantId))
+      .limit(1);
+
+    return { user, tenant: tenant ?? null };
   });
 };
