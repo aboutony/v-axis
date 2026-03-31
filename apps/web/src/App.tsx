@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 
 import {
   bootstrapClient,
@@ -18,7 +18,7 @@ type ThemeMode = "light" | "dark";
 
 const navigationItems = [
   {
-    label: "Command Center",
+    label: "Start",
     to: "/",
     eyebrow: "Now",
   },
@@ -36,24 +36,6 @@ const navigationItems = [
     label: "Architecture",
     to: "/architecture",
     eyebrow: "System",
-  },
-];
-
-const productPillars = [
-  {
-    title: "Predictive Governance",
-    description:
-      "Turn expiry and compliance drift into a live operational signal instead of a spreadsheet surprise.",
-  },
-  {
-    title: "Tenant Sovereignty",
-    description:
-      "Design for shared SaaS efficiency today and dedicated enterprise isolation tomorrow without rewriting the core.",
-  },
-  {
-    title: "Command Accountability",
-    description:
-      "Every alert becomes an owned task with a due date, escalation path, and audit footprint.",
   },
 ];
 
@@ -134,8 +116,10 @@ export function App() {
               {session
                 ? `Operating ${session.tenant.clientName}`
                 : platformQuery.isLoading
-                  ? "Loading platform brief"
-                  : "Foundation active"}
+                  ? "Checking workspace"
+                  : platformQuery.data?.platformState.hasTenants
+                    ? "Workspace ready"
+                    : "Ready for first tenant"}
             </div>
 
             <button
@@ -153,7 +137,9 @@ export function App() {
         <Routes>
           <Route
             path="/"
-            element={<CommandCenterPage platformQuery={platformQuery} />}
+            element={
+              <HomeEntryPage platformQuery={platformQuery} session={session} />
+            }
           />
           <Route
             path="/workspace"
@@ -176,123 +162,53 @@ export function App() {
   );
 }
 
-function CommandCenterPage({
+function HomeEntryPage({
   platformQuery,
+  session,
 }: {
   platformQuery: UseQueryResult<PlatformBootstrapResponse, Error>;
+  session: AuthSession | null;
 }) {
-  const bootstrap = platformQuery.data;
-
-  return (
-    <div className="page-grid">
-      <section className="hero-card">
-        <div className="hero-copy">
-          <p className="eyebrow">Single Pane of Glass</p>
-          <h3>
-            {bootstrap?.platform.name ?? "V-AXIS"} is being laid down as a
-            sovereign operating system for document governance.
-          </h3>
-          <p className="hero-body">
-            The platform now spans a serious monorepo foundation, a tenant-aware
-            API, a shared product-domain package, and a working operator
-            workspace that can create tenants, manage taxonomy, register
-            documents, and surface governance health.
+  if (platformQuery.isLoading) {
+    return (
+      <div className="page-grid">
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Opening Workspace</p>
+              <h3>Checking whether this deployment is ready for setup or sign-in.</h3>
+            </div>
+          </div>
+          <p className="helper-copy">
+            V-AXIS now opens into the working product flow instead of the technical
+            foundation overview.
           </p>
-        </div>
+        </section>
+      </div>
+    );
+  }
 
-        <div className="hero-metrics">
-          <MetricCard
-            label="Configured category slots"
-            value={String(bootstrap?.platform.categorySlots ?? 8)}
-          />
-          <MetricCard
-            label="Seeded document types"
-            value={String(bootstrap?.seededDocumentTypes.length ?? 19)}
-          />
-          <MetricCard
-            label="Default role families"
-            value={String(bootstrap?.roles.length ?? 4)}
-          />
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <p className="eyebrow">Product Pillars</p>
-            <h3>What makes this platform necessary</h3>
+  if (platformQuery.error) {
+    return (
+      <div className="page-grid">
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Platform Check</p>
+              <h3>We could not load the live platform state.</h3>
+            </div>
           </div>
-        </div>
+          <p className="form-feedback error">{platformQuery.error.message}</p>
+        </section>
+      </div>
+    );
+  }
 
-        <div className="pillar-grid">
-          {productPillars.map((pillar) => (
-            <article className="pillar-card" key={pillar.title}>
-              <h4>{pillar.title}</h4>
-              <p>{pillar.description}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+  if (session || platformQuery.data?.platformState.hasTenants) {
+    return <Navigate replace to="/workspace" />;
+  }
 
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <p className="eyebrow">Operational Slice</p>
-            <h3>What is live in this delivery</h3>
-          </div>
-        </div>
-
-        <div className="feature-grid">
-          <FeatureCard
-            title="Tenant Bootstrap"
-            body="Create the first client environment and client admin with seeded category slots."
-          />
-          <FeatureCard
-            title="Workspace Login"
-            body="Authenticate into a tenant and keep a local operator session for the control plane."
-          />
-          <FeatureCard
-            title="Taxonomy Control"
-            body="Rename categories, add entities, and shape the holding structure from the app."
-          />
-          <FeatureCard
-            title="Document Intake"
-            body="Register records with validation, DNA-code generation, version scaffolding, and live risk recalculation."
-          />
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <p className="eyebrow">Seeded Taxonomy</p>
-            <h3>Initial Saudi/GCC compliance corpus</h3>
-          </div>
-        </div>
-
-        <div className="document-type-list">
-          {(bootstrap?.seededDocumentTypes ?? []).map((documentType) => (
-            <article className="document-type-row" key={documentType.code}>
-              <div>
-                <span className="code-chip">#{documentType.code}</span>
-                <h4>{documentType.label}</h4>
-                <p>{documentType.notes}</p>
-              </div>
-              <div className="document-type-meta">
-                <span className="badge">{documentType.sector}</span>
-                <span className="meta-pill">
-                  {documentType.requiresExpiry ? "Expiry-tracked" : "No expiry"}
-                </span>
-                <span className="meta-pill">
-                  {documentType.requiresCr ? "CR-linked" : "Standalone"}
-                </span>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
+  return <Navigate replace to="/launchpad" />;
 }
 
 function LaunchpadPage({
@@ -555,15 +471,6 @@ function MetricCard({ label, value }: { label: string; value: string }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
-  );
-}
-
-function FeatureCard({ title, body }: { title: string; body: string }) {
-  return (
-    <article className="feature-card">
-      <h4>{title}</h4>
-      <p>{body}</p>
-    </article>
   );
 }
 

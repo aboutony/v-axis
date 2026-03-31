@@ -25,6 +25,10 @@ export type PlatformBootstrapResponse = {
     tagline: string;
     categorySlots: number;
   };
+  platformState: {
+    tenantCount: number;
+    hasTenants: boolean;
+  };
   security: {
     auth: string;
     encryption: string;
