@@ -5,7 +5,7 @@ services:
     rootDir: .
     plan: starter
     autoDeploy: true
-    buildCommand: npm install && npm run build -w @vaxis/api
+    buildCommand: npm install --include=dev && npm run build -w @vaxis/api
     startCommand: npm run start -w @vaxis/api
     healthCheckPath: /health
     envVars:
@@ -70,7 +70,7 @@ services:
     rootDir: .
     plan: starter
     autoDeploy: true
-    buildCommand: npm install && npm run build -w @vaxis/api
+    buildCommand: npm install --include=dev && npm run build -w @vaxis/api
     startCommand: npm run start:worker -w @vaxis/api
     envVars:
       - key: NODE_VERSION
