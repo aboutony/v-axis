@@ -485,6 +485,64 @@ function buildEscalationDueDate(now = new Date()) {
   return result.toISOString().slice(0, 10);
 }
 
+function normalizeDateOnly(input: string | Date | null | undefined) {
+  const value = toDate(input ?? null);
+
+  if (value) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  return typeof input === "string" && input.trim() ? input : null;
+}
+
+export function resolveNotificationWorkflowState(input: {
+  existing?: {
+    status: (typeof notifications.$inferSelect)["status"];
+    dueDate: string | Date | null;
+    assignedTo: string | null;
+    delegatedBy: string | null;
+    escalationLevel: number;
+    resolvedAt: Date | null;
+  } | null;
+  defaultAssignedTo: string | null;
+  defaultEscalationLevel: number;
+  payloadDueDate: Date | null;
+}): {
+  status: (typeof notifications.$inferSelect)["status"];
+  assignedTo: string | null;
+  delegatedBy: string | null;
+  escalationLevel: number;
+  dueDate: string | null;
+  resolvedAt: Date | null;
+} {
+  const keepsExistingWorkflow =
+    input.existing &&
+    input.existing.status !== "RESOLVED" &&
+    input.existing.status !== "CLOSED";
+
+  if (keepsExistingWorkflow && input.existing) {
+    return {
+      status: input.existing.status,
+      assignedTo: input.existing.assignedTo ?? input.defaultAssignedTo,
+      delegatedBy: input.existing.delegatedBy,
+      escalationLevel: input.existing.escalationLevel,
+      dueDate:
+        normalizeDateOnly(input.existing.dueDate) ??
+        normalizeDateOnly(input.payloadDueDate),
+      resolvedAt: input.existing.resolvedAt,
+    };
+  }
+
+  return {
+    status: "PENDING",
+    assignedTo: input.defaultAssignedTo,
+    delegatedBy: null,
+    escalationLevel: input.defaultEscalationLevel,
+    dueDate: normalizeDateOnly(input.payloadDueDate),
+    resolvedAt: null,
+  };
+}
+
 export async function syncEntityNotifications(input: {
   tenantId: string;
   entityId: string;
@@ -525,15 +583,25 @@ export async function syncEntityNotifications(input: {
       )
       .limit(1);
 
-    const nextStatus =
-      existing && existing.status !== "RESOLVED" && existing.status !== "CLOSED"
-        ? existing.status
-        : "PENDING";
-
     const shouldRecordCreated =
       !existing ||
       existing.status === "RESOLVED" ||
       existing.status === "CLOSED";
+    const nextWorkflowState = resolveNotificationWorkflowState({
+      existing: existing
+        ? {
+            status: existing.status,
+            dueDate: existing.dueDate,
+            assignedTo: existing.assignedTo,
+            delegatedBy: existing.delegatedBy,
+            escalationLevel: existing.escalationLevel,
+            resolvedAt: existing.resolvedAt,
+          }
+        : null,
+      defaultAssignedTo: assigneeUserId,
+      defaultEscalationLevel: alert.severity === "CRITICAL" ? 2 : 0,
+      payloadDueDate: payload.dueDate,
+    });
 
     const [upsertedNotification] = await db
       .insert(notifications)
@@ -544,16 +612,14 @@ export async function syncEntityNotifications(input: {
         sourceKey: payload.sourceKey,
         type: payload.type,
         severity: alert.severity,
-        status: nextStatus,
+        status: nextWorkflowState.status,
         title: payload.title,
         message: payload.message,
-        assignedTo: assigneeUserId,
-        escalationLevel: alert.severity === "CRITICAL" ? 2 : 0,
-        dueDate: payload.dueDate
-          ? payload.dueDate.toISOString().slice(0, 10)
-          : null,
-        resolvedAt:
-          nextStatus === "PENDING" ? null : (existing?.resolvedAt ?? null),
+        assignedTo: nextWorkflowState.assignedTo,
+        delegatedBy: nextWorkflowState.delegatedBy,
+        escalationLevel: nextWorkflowState.escalationLevel,
+        dueDate: nextWorkflowState.dueDate,
+        resolvedAt: nextWorkflowState.resolvedAt,
       })
       .onConflictDoUpdate({
         target: [notifications.tenantId, notifications.sourceKey],
@@ -563,13 +629,12 @@ export async function syncEntityNotifications(input: {
           severity: alert.severity,
           title: payload.title,
           message: payload.message,
-          assignedTo: assigneeUserId,
-          dueDate: payload.dueDate
-            ? payload.dueDate.toISOString().slice(0, 10)
-            : null,
-          status: nextStatus,
-          resolvedAt:
-            nextStatus === "PENDING" ? null : (existing?.resolvedAt ?? null),
+          assignedTo: nextWorkflowState.assignedTo,
+          delegatedBy: nextWorkflowState.delegatedBy,
+          dueDate: nextWorkflowState.dueDate,
+          status: nextWorkflowState.status,
+          escalationLevel: nextWorkflowState.escalationLevel,
+          resolvedAt: nextWorkflowState.resolvedAt,
           updatedAt: new Date(),
         },
       })

@@ -8,9 +8,10 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -n web,api -c blue,green \"npm run dev -w @vaxis/web\" \"npm run dev -w @vaxis/api\"",
+    "dev": "concurrently -n web,api,worker -c blue,green,yellow \"npm run dev -w @vaxis/web\" \"npm run dev -w @vaxis/api\" \"npm run dev:worker -w @vaxis/api\"",
     "dev:web": "npm run dev -w @vaxis/web",
     "dev:api": "npm run dev -w @vaxis/api",
+    "dev:worker": "npm run dev:worker -w @vaxis/api",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",

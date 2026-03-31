@@ -5,6 +5,13 @@ import { db } from "@vaxis/db";
 import { auditLogs, connectors, users } from "@vaxis/db/schema";
 
 import { apiEnv } from "../config";
+import {
+  deliveryJobNames,
+  enqueueDeliveryJob,
+  type InviteEmailJobData,
+  type NotificationEmailJobData,
+  type PasswordResetEmailJobData,
+} from "./jobs";
 import { sendPlatformEmail } from "./mailer";
 
 function emptyStringToUndefined(value: unknown) {
@@ -45,6 +52,21 @@ type ConnectorEmailPurpose =
   | "TASK_ASSIGNMENT"
   | "TASK_ESCALATION"
   | "TEST";
+
+function buildQueuedDeliveryResult() {
+  return {
+    attempted: 0,
+    delivered: 0,
+    queued: 1,
+  };
+}
+
+function logQueueFallback(jobName: string, error: unknown) {
+  console.warn(
+    `[delivery] Falling back to inline delivery for ${jobName}.`,
+    error,
+  );
+}
 
 function normalizeConnectorConfig(
   rawConfig: unknown,
@@ -218,15 +240,7 @@ export async function dispatchConnectorEmail(input: {
   };
 }
 
-export async function dispatchInviteEmail(input: {
-  tenantId: string;
-  actorUserId?: string | null;
-  recipientEmail: string;
-  recipientName?: string | null;
-  tenantName: string;
-  inviteLink: string;
-  expiresAt: string;
-}) {
+export async function deliverInviteEmailNow(input: InviteEmailJobData) {
   const text = [
     `You have been invited to ${input.tenantName} on V-AXIS.`,
     "",
@@ -250,15 +264,22 @@ export async function dispatchInviteEmail(input: {
   });
 }
 
-export async function dispatchPasswordResetEmail(input: {
-  tenantId: string;
-  actorUserId?: string | null;
-  recipientEmail: string;
-  recipientName?: string | null;
-  tenantName: string;
-  resetLink: string;
-  expiresAt: string;
-}) {
+export async function dispatchInviteEmail(input: InviteEmailJobData) {
+  if (apiEnv.JOB_DELIVERY_MODE === "QUEUE") {
+    try {
+      await enqueueDeliveryJob(deliveryJobNames.inviteEmail, input);
+      return buildQueuedDeliveryResult();
+    } catch (error) {
+      logQueueFallback(deliveryJobNames.inviteEmail, error);
+    }
+  }
+
+  return deliverInviteEmailNow(input);
+}
+
+export async function deliverPasswordResetEmailNow(
+  input: PasswordResetEmailJobData,
+) {
   const text = [
     `A password reset was requested for ${input.tenantName} on V-AXIS.`,
     "",
@@ -282,17 +303,24 @@ export async function dispatchPasswordResetEmail(input: {
   });
 }
 
-export async function dispatchAssignedNotificationEmail(input: {
-  tenantId: string;
-  actorUserId?: string | null;
-  assigneeUserId: string;
-  notificationTitle: string;
-  notificationMessage: string;
-  dueDate?: string | null;
-  severity: string;
-  escalationLevel?: number;
-  purpose: "TASK_ASSIGNMENT" | "TASK_ESCALATION";
-}) {
+export async function dispatchPasswordResetEmail(
+  input: PasswordResetEmailJobData,
+) {
+  if (apiEnv.JOB_DELIVERY_MODE === "QUEUE") {
+    try {
+      await enqueueDeliveryJob(deliveryJobNames.passwordResetEmail, input);
+      return buildQueuedDeliveryResult();
+    } catch (error) {
+      logQueueFallback(deliveryJobNames.passwordResetEmail, error);
+    }
+  }
+
+  return deliverPasswordResetEmailNow(input);
+}
+
+export async function deliverAssignedNotificationEmailNow(
+  input: NotificationEmailJobData,
+) {
   const [user] = await db
     .select({
       email: users.email,
@@ -340,4 +368,19 @@ export async function dispatchAssignedNotificationEmail(input: {
       escalationLevel: input.escalationLevel ?? 0,
     },
   });
+}
+
+export async function dispatchAssignedNotificationEmail(
+  input: NotificationEmailJobData,
+) {
+  if (apiEnv.JOB_DELIVERY_MODE === "QUEUE") {
+    try {
+      await enqueueDeliveryJob(deliveryJobNames.notificationEmail, input);
+      return buildQueuedDeliveryResult();
+    } catch (error) {
+      logQueueFallback(deliveryJobNames.notificationEmail, error);
+    }
+  }
+
+  return deliverAssignedNotificationEmailNow(input);
 }

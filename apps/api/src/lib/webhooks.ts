@@ -7,6 +7,11 @@ import { webhooks } from "@vaxis/db/schema";
 import type { ActivityEventType } from "@vaxis/domain";
 
 import { apiEnv } from "../config";
+import {
+  deliveryJobNames,
+  enqueueDeliveryJob,
+  type WebhookEventJobData,
+} from "./jobs";
 import { decryptSensitiveValue, encryptSensitiveValue } from "./secrets";
 
 type WebhookRow = typeof webhooks.$inferSelect;
@@ -139,7 +144,14 @@ async function deliverWebhook(input: {
   }
 }
 
-export async function emitTenantWebhookEvent(input: {
+function logWebhookQueueFallback(error: unknown) {
+  console.warn(
+    "[delivery] Falling back to inline webhook delivery.",
+    error,
+  );
+}
+
+export async function emitTenantWebhookEventNow(input: {
   tenantId: string;
   eventType: ActivityEventType;
   resourceType: string;
@@ -178,6 +190,23 @@ export async function emitTenantWebhookEvent(input: {
     attempted: subscribedWebhooks.length,
     delivered: results.filter((result) => result.ok).length,
   };
+}
+
+export async function emitTenantWebhookEvent(input: WebhookEventJobData) {
+  if (apiEnv.JOB_DELIVERY_MODE === "QUEUE") {
+    try {
+      await enqueueDeliveryJob(deliveryJobNames.webhookEvent, input);
+      return {
+        attempted: 0,
+        delivered: 0,
+        queued: 1,
+      };
+    } catch (error) {
+      logWebhookQueueFallback(error);
+    }
+  }
+
+  return emitTenantWebhookEventNow(input);
 }
 
 export async function sendWebhookTestEvent(input: {

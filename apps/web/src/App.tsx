@@ -61,7 +61,7 @@ const stackHighlights = [
   "React + Vite frontend shell",
   "Fastify API with OpenAPI docs",
   "PostgreSQL + Drizzle data model",
-  "Redis-ready session and queue layer",
+  "Redis-backed worker and queue automation",
   "Docker Compose local infrastructure",
   "Mailpit for free local email testing",
 ];
@@ -491,7 +491,7 @@ function ArchitecturePage({
           />
           <DecisionCard
             title="Infra"
-            body="Docker Compose local stack with Postgres, Redis, and Mailpit, all using free/open-source tooling."
+            body="Docker Compose local stack with Postgres, Redis, and Mailpit, plus a dedicated worker process for scheduled automation and queued delivery."
           />
         </div>
       </section>

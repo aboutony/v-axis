@@ -14,6 +14,7 @@ const envSchema = z.object({
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
+  REDIS_URL: z.string().min(1).default("redis://127.0.0.1:6379"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   COOKIE_SECRET: z.string().min(16).default("vaxis-cookie-secret-dev"),
   JWT_SECRET: z.string().min(16).default("vaxis-jwt-secret-dev"),
@@ -38,6 +39,18 @@ const envSchema = z.object({
     .default("no-reply@v-axis.local"),
   EMAIL_FROM_NAME: z.string().default("V-AXIS"),
   VAULT_STORAGE_ROOT: z.string().default(".data/vault"),
+  JOB_DELIVERY_MODE: z.enum(["INLINE", "QUEUE"]).optional(),
+  WORKER_DELIVERY_CONCURRENCY: z.coerce.number().int().positive().default(5),
+  WORKER_GOVERNANCE_REFRESH_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(15 * 60 * 1000),
+  WORKER_ESCALATION_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5 * 60 * 1000),
 });
 
 function normalizeMultilineSecret(value?: string): string | undefined {
@@ -58,6 +71,9 @@ export const apiEnv = {
     parsedEnv.APP_BASE_URL ??
     parsedEnv.CORS_ORIGIN.split(",")[0]?.trim() ??
     "http://localhost:5173",
+  JOB_DELIVERY_MODE:
+    parsedEnv.JOB_DELIVERY_MODE ??
+    (parsedEnv.NODE_ENV === "test" ? "INLINE" : "QUEUE"),
 };
 
 const privateKey = normalizeMultilineSecret(apiEnv.JWT_PRIVATE_KEY);

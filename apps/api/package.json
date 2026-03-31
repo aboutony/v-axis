@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsup src/server.ts --format esm --target node22 --out-dir dist --clean",
+    "dev:worker": "tsx watch src/worker.ts",
+    "build": "tsup src/server.ts src/worker.ts --format esm --target node22 --out-dir dist --clean",
     "start": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests"
   },
@@ -20,9 +22,11 @@
     "@vaxis/db": "file:../../packages/db",
     "@vaxis/domain": "file:../../packages/domain",
     "bcryptjs": "^3.0.2",
+    "bullmq": "^5.71.1",
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.44.0",
     "fastify": "^5.3.3",
+    "ioredis": "^5.10.1",
     "nodemailer": "^8.0.4",
     "otplib": "^12.0.1",
     "pg": "^8.16.0",

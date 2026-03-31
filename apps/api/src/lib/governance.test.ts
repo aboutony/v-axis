@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { isNotificationOverdue, pickEscalationAssignee } from "./governance";
+import {
+  isNotificationOverdue,
+  pickEscalationAssignee,
+  resolveNotificationWorkflowState,
+} from "./governance";
 
 describe("governance escalation helpers", () => {
   it("marks only past-due notifications as overdue", () => {
@@ -49,6 +53,56 @@ describe("governance escalation helpers", () => {
     ).toEqual({
       userId: "admin-1",
       reason: "client_admin",
+    });
+  });
+
+  it("preserves due date and assignee for open notifications during refresh", () => {
+    expect(
+      resolveNotificationWorkflowState({
+        existing: {
+          status: "ESCALATED",
+          dueDate: "2026-03-30",
+          assignedTo: "admin-1",
+          delegatedBy: "manager-2",
+          escalationLevel: 3,
+          resolvedAt: null,
+        },
+        defaultAssignedTo: "manager-2",
+        defaultEscalationLevel: 2,
+        payloadDueDate: new Date("2026-04-14T00:00:00.000Z"),
+      }),
+    ).toEqual({
+      status: "ESCALATED",
+      dueDate: "2026-03-30",
+      assignedTo: "admin-1",
+      delegatedBy: "manager-2",
+      escalationLevel: 3,
+      resolvedAt: null,
+    });
+  });
+
+  it("restarts workflow defaults when a notification is reopened", () => {
+    expect(
+      resolveNotificationWorkflowState({
+        existing: {
+          status: "CLOSED",
+          dueDate: "2026-03-30",
+          assignedTo: "admin-1",
+          delegatedBy: "manager-2",
+          escalationLevel: 3,
+          resolvedAt: new Date("2026-03-31T00:00:00.000Z"),
+        },
+        defaultAssignedTo: "manager-2",
+        defaultEscalationLevel: 2,
+        payloadDueDate: new Date("2026-04-14T00:00:00.000Z"),
+      }),
+    ).toEqual({
+      status: "PENDING",
+      dueDate: "2026-04-14",
+      assignedTo: "manager-2",
+      delegatedBy: null,
+      escalationLevel: 2,
+      resolvedAt: null,
     });
   });
 });
