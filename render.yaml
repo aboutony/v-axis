@@ -2,6 +2,7 @@ services:
   - type: web
     name: v-axis-api
     env: node
+    region: frankfurt
     rootDir: .
     plan: starter
     autoDeploy: true
@@ -67,6 +68,7 @@ services:
   - type: worker
     name: v-axis-worker
     env: node
+    region: frankfurt
     rootDir: .
     plan: starter
     autoDeploy: true
