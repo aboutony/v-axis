@@ -13,6 +13,7 @@ import {
 } from "@vaxis/db/schema";
 import { clampScore, getExpirySeverity } from "@vaxis/domain";
 
+import { dispatchAssignedNotificationEmail } from "./connectors";
 import { emitTenantWebhookEvent } from "./webhooks";
 
 type RiskDocument = {
@@ -605,6 +606,19 @@ export async function syncEntityNotifications(input: {
           dueDate: payload.dueDate ? payload.dueDate.toISOString() : null,
         },
       });
+
+      if (assigneeUserId) {
+        await dispatchAssignedNotificationEmail({
+          tenantId: input.tenantId,
+          assigneeUserId,
+          notificationTitle: payload.title,
+          notificationMessage: payload.message,
+          dueDate: payload.dueDate ? payload.dueDate.toISOString().slice(0, 10) : null,
+          severity: alert.severity,
+          escalationLevel: alert.severity === "CRITICAL" ? 2 : 0,
+          purpose: "TASK_ASSIGNMENT",
+        });
+      }
     }
   }
 
@@ -839,6 +853,20 @@ export async function escalateOverdueNotifications(input: {
         escalationLevel: updated.escalationLevel,
       },
     });
+
+    if (nextAssignedTo) {
+      await dispatchAssignedNotificationEmail({
+        tenantId: input.tenantId,
+        actorUserId: input.actorUserId ?? null,
+        assigneeUserId: nextAssignedTo,
+        notificationTitle: updated.title,
+        notificationMessage: updated.message,
+        dueDate: updated.dueDate,
+        severity: updated.severity,
+        escalationLevel: updated.escalationLevel,
+        purpose: "TASK_ESCALATION",
+      });
+    }
   }
 
   return {

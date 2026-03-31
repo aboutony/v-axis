@@ -23,6 +23,20 @@ const envSchema = z.object({
   APP_ENCRYPTION_SECRET: z.string().min(16).optional(),
   APP_BASE_URL: z.string().url().optional(),
   WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+  EMAIL_TRANSPORT: z.enum(["SMTP", "JSON"]).default("SMTP"),
+  SMTP_HOST: z.string().default("127.0.0.1"),
+  SMTP_PORT: z.coerce.number().int().positive().default(1025),
+  SMTP_SECURE: z
+    .union([z.boolean(), z.enum(["true", "false"])])
+    .default(false)
+    .transform((value) => value === true || value === "true"),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  EMAIL_FROM_ADDRESS: z
+    .string()
+    .email()
+    .default("no-reply@v-axis.local"),
+  EMAIL_FROM_NAME: z.string().default("V-AXIS"),
   VAULT_STORAGE_ROOT: z.string().default(".data/vault"),
 });
 

@@ -1,0 +1,2 @@
+ALTER TYPE "public"."activity_event_type" ADD VALUE 'connector.updated' BEFORE 'tenant.bootstrapped';--> statement-breakpoint
+ALTER TYPE "public"."activity_event_type" ADD VALUE 'email.sent' BEFORE 'tenant.bootstrapped';

@@ -5,6 +5,7 @@ import {
   acknowledgeNotification,
   ApiError,
   beginMfaEnrollment,
+  createConnector,
   createWebhook,
   createUser,
   createEntity,
@@ -12,6 +13,7 @@ import {
   deleteRule,
   escalateOverdueNotifications,
   fetchAuditLogs,
+  fetchConnectors,
   fetchDashboardSummary,
   fetchDocuments,
   fetchDocumentTypes,
@@ -28,13 +30,16 @@ import {
   replaceDocumentFile,
   resolveNotification,
   sendUserInvite,
+  testConnectorEmail,
   testWebhook,
   toggleCriticalMaster,
   updateCategory,
+  updateConnector,
   updateUser,
   updateWebhook,
   uploadDocument,
   verifyTotpEnrollment,
+  type CreateConnectorInput,
   type CreateWebhookInput,
   type AuthSession,
   type CreateUserInput,
@@ -43,6 +48,7 @@ import {
   type RegisterDocumentInput,
   type RuleInput,
   type UpdateUserInput,
+  type UpdateConnectorInput,
   type UpdateWebhookInput,
   type UsersResponse,
 } from "../lib/api";
@@ -77,6 +83,19 @@ type WebhookDraft = {
   sharedSecret: string;
   subscribedEvents: string[];
   enabled: boolean;
+};
+
+type ConnectorDraft = {
+  name: string;
+  status: "ACTIVE" | "INACTIVE";
+  senderName: string;
+  senderEmail: string;
+  replyToEmail: string;
+  subjectPrefix: string;
+  dispatchInviteLinks: boolean;
+  dispatchPasswordResets: boolean;
+  dispatchTaskAssignments: boolean;
+  dispatchEscalations: boolean;
 };
 
 function buildUserDraft(user: UsersResponse["users"][number]): UserDraft {
@@ -169,6 +188,21 @@ export function WorkspacePage({
     resourceType: "",
     userId: "",
   });
+  const [connectorForm, setConnectorForm] = useState<CreateConnectorInput>({
+    name: "",
+    status: "ACTIVE",
+    senderName: "V-AXIS",
+    senderEmail: "no-reply@v-axis.local",
+    replyToEmail: "",
+    subjectPrefix: "[V-AXIS]",
+    dispatchInviteLinks: true,
+    dispatchPasswordResets: true,
+    dispatchTaskAssignments: true,
+    dispatchEscalations: true,
+  });
+  const [connectorDrafts, setConnectorDrafts] = useState<
+    Record<string, ConnectorDraft>
+  >({});
   const [webhookForm, setWebhookForm] = useState<CreateWebhookInput>({
     name: "",
     url: "",
@@ -257,6 +291,11 @@ export function WorkspacePage({
     },
     enabled: Boolean(accessToken),
   });
+  const connectorsQuery = useQuery({
+    queryKey: ["workspace-connectors", accessToken],
+    queryFn: () => fetchConnectors(accessToken!),
+    enabled: Boolean(accessToken),
+  });
   const webhooksQuery = useQuery({
     queryKey: ["workspace-webhooks", accessToken],
     queryFn: () => fetchWebhooks(accessToken!),
@@ -266,6 +305,7 @@ export function WorkspacePage({
   const categories = taxonomyQuery.data?.categories ?? [];
   const allEntities = categories.flatMap((category) => category.entities);
   const workspaceUsers = usersQuery.data?.users ?? [];
+  const emailConnectors = connectorsQuery.data?.connectors ?? [];
   const webhookEvents = webhooksQuery.data?.availableEvents ?? [];
 
   const [categoryEdits, setCategoryEdits] = useState<
@@ -350,6 +390,29 @@ export function WorkspacePage({
       }));
     }
   }, [webhookEvents, webhookForm.subscribedEvents.length]);
+
+  useEffect(() => {
+    const nextDrafts = Object.fromEntries(
+      emailConnectors.map((connector) => [
+        connector.id,
+        {
+          name: connector.name,
+          status:
+            connector.status === "ERROR" ? "ACTIVE" : connector.status,
+          senderName: connector.senderName,
+          senderEmail: connector.senderEmail,
+          replyToEmail: connector.replyToEmail ?? "",
+          subjectPrefix: connector.subjectPrefix,
+          dispatchInviteLinks: connector.dispatchInviteLinks,
+          dispatchPasswordResets: connector.dispatchPasswordResets,
+          dispatchTaskAssignments: connector.dispatchTaskAssignments,
+          dispatchEscalations: connector.dispatchEscalations,
+        },
+      ]),
+    );
+
+    setConnectorDrafts(nextDrafts);
+  }, [emailConnectors]);
 
   useEffect(() => {
     const nextDrafts = Object.fromEntries(
@@ -453,6 +516,9 @@ export function WorkspacePage({
       }),
       queryClient.invalidateQueries({
         queryKey: ["workspace-audit", accessToken],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["workspace-connectors", accessToken],
       }),
       queryClient.invalidateQueries({
         queryKey: ["workspace-webhooks", accessToken],
@@ -643,6 +709,34 @@ export function WorkspacePage({
         expiresAt: response.passwordReset.expiresAt,
       });
     },
+  });
+  const createConnectorMutation = useMutation({
+    mutationFn: (input: CreateConnectorInput) => createConnector(accessToken!, input),
+    onSuccess: async () => {
+      await refreshWorkspace();
+      setConnectorForm({
+        name: "",
+        status: "ACTIVE",
+        senderName: "V-AXIS",
+        senderEmail: "no-reply@v-axis.local",
+        replyToEmail: "",
+        subjectPrefix: "[V-AXIS]",
+        dispatchInviteLinks: true,
+        dispatchPasswordResets: true,
+        dispatchTaskAssignments: true,
+        dispatchEscalations: true,
+      });
+    },
+  });
+  const updateConnectorMutation = useMutation({
+    mutationFn: (input: { connectorId: string; payload: UpdateConnectorInput }) =>
+      updateConnector(accessToken!, input.connectorId, input.payload),
+    onSuccess: refreshWorkspace,
+  });
+  const testConnectorMutation = useMutation({
+    mutationFn: (input: { connectorId: string; recipientEmail?: string }) =>
+      testConnectorEmail(accessToken!, input.connectorId, input.recipientEmail),
+    onSuccess: refreshWorkspace,
   });
   const createWebhookMutation = useMutation({
     mutationFn: (input: CreateWebhookInput) => createWebhook(accessToken!, input),
@@ -2085,6 +2179,443 @@ export function WorkspacePage({
           <p className="form-feedback error">
             {criticalMasterMutation.error.message}
           </p>
+        ) : null}
+      </section>
+
+      <section className="card workspace-header-card">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">Email Connectors</p>
+            <h3>Deliver invites, resets, and task alerts through Mailpit or SMTP</h3>
+          </div>
+        </div>
+
+        <div className="team-admin-grid">
+          <form
+            className="launch-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              createConnectorMutation.mutate(connectorForm);
+            }}
+          >
+            <label>
+              Connector name
+              <input
+                onChange={(event) =>
+                  setConnectorForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                value={connectorForm.name}
+              />
+            </label>
+
+            <label>
+              Status
+              <select
+                onChange={(event) =>
+                  setConnectorForm((current) => ({
+                    ...current,
+                    status: event.target.value as CreateConnectorInput["status"],
+                  }))
+                }
+                value={connectorForm.status ?? "ACTIVE"}
+              >
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+              </select>
+            </label>
+
+            <label>
+              Sender name
+              <input
+                onChange={(event) =>
+                  setConnectorForm((current) => ({
+                    ...current,
+                    senderName: event.target.value,
+                  }))
+                }
+                value={connectorForm.senderName}
+              />
+            </label>
+
+            <label>
+              Sender email
+              <input
+                onChange={(event) =>
+                  setConnectorForm((current) => ({
+                    ...current,
+                    senderEmail: event.target.value,
+                  }))
+                }
+                type="email"
+                value={connectorForm.senderEmail}
+              />
+            </label>
+
+            <label>
+              Reply-to email
+              <input
+                onChange={(event) =>
+                  setConnectorForm((current) => ({
+                    ...current,
+                    replyToEmail: event.target.value,
+                  }))
+                }
+                type="email"
+                value={connectorForm.replyToEmail ?? ""}
+              />
+            </label>
+
+            <label>
+              Subject prefix
+              <input
+                onChange={(event) =>
+                  setConnectorForm((current) => ({
+                    ...current,
+                    subjectPrefix: event.target.value,
+                  }))
+                }
+                value={connectorForm.subjectPrefix ?? ""}
+              />
+            </label>
+
+            <label className="checkbox-row">
+              <input
+                checked={Boolean(connectorForm.dispatchInviteLinks)}
+                onChange={(event) =>
+                  setConnectorForm((current) => ({
+                    ...current,
+                    dispatchInviteLinks: event.target.checked,
+                  }))
+                }
+                type="checkbox"
+              />
+              Send invite links
+            </label>
+
+            <label className="checkbox-row">
+              <input
+                checked={Boolean(connectorForm.dispatchPasswordResets)}
+                onChange={(event) =>
+                  setConnectorForm((current) => ({
+                    ...current,
+                    dispatchPasswordResets: event.target.checked,
+                  }))
+                }
+                type="checkbox"
+              />
+              Send password resets
+            </label>
+
+            <label className="checkbox-row">
+              <input
+                checked={Boolean(connectorForm.dispatchTaskAssignments)}
+                onChange={(event) =>
+                  setConnectorForm((current) => ({
+                    ...current,
+                    dispatchTaskAssignments: event.target.checked,
+                  }))
+                }
+                type="checkbox"
+              />
+              Send task assignments
+            </label>
+
+            <label className="checkbox-row">
+              <input
+                checked={Boolean(connectorForm.dispatchEscalations)}
+                onChange={(event) =>
+                  setConnectorForm((current) => ({
+                    ...current,
+                    dispatchEscalations: event.target.checked,
+                  }))
+                }
+                type="checkbox"
+              />
+              Send escalations
+            </label>
+
+            <button
+              className="primary-button"
+              disabled={createConnectorMutation.isPending}
+              type="submit"
+            >
+              {createConnectorMutation.isPending
+                ? "Creating connector..."
+                : "Create email connector"}
+            </button>
+
+            {createConnectorMutation.error ? (
+              <p className="form-feedback error">
+                {createConnectorMutation.error.message}
+              </p>
+            ) : null}
+          </form>
+
+          <div className="user-admin-list">
+            {emailConnectors.map((connector) => {
+              const draft = connectorDrafts[connector.id] ?? {
+                name: connector.name,
+                status: connector.status === "ERROR" ? "ACTIVE" : connector.status,
+                senderName: connector.senderName,
+                senderEmail: connector.senderEmail,
+                replyToEmail: connector.replyToEmail ?? "",
+                subjectPrefix: connector.subjectPrefix,
+                dispatchInviteLinks: connector.dispatchInviteLinks,
+                dispatchPasswordResets: connector.dispatchPasswordResets,
+                dispatchTaskAssignments: connector.dispatchTaskAssignments,
+                dispatchEscalations: connector.dispatchEscalations,
+              };
+
+              return (
+                <article className="user-admin-card" key={connector.id}>
+                  <div className="category-editor-top">
+                    <div>
+                      <strong>{connector.name}</strong>
+                      <p className="helper-copy">
+                        {connector.senderName} ({connector.senderEmail})
+                      </p>
+                    </div>
+                    <span className="meta-pill">{connector.status}</span>
+                  </div>
+
+                  <div className="user-admin-fields">
+                    <label>
+                      Name
+                      <input
+                        onChange={(event) =>
+                          setConnectorDrafts((current) => ({
+                            ...current,
+                            [connector.id]: {
+                              ...draft,
+                              name: event.target.value,
+                            },
+                          }))
+                        }
+                        value={draft.name}
+                      />
+                    </label>
+
+                    <label>
+                      Status
+                      <select
+                        onChange={(event) =>
+                          setConnectorDrafts((current) => ({
+                            ...current,
+                            [connector.id]: {
+                              ...draft,
+                              status: event.target.value as ConnectorDraft["status"],
+                            },
+                          }))
+                        }
+                        value={draft.status}
+                      >
+                        <option value="ACTIVE">Active</option>
+                        <option value="INACTIVE">Inactive</option>
+                      </select>
+                    </label>
+
+                    <label>
+                      Sender name
+                      <input
+                        onChange={(event) =>
+                          setConnectorDrafts((current) => ({
+                            ...current,
+                            [connector.id]: {
+                              ...draft,
+                              senderName: event.target.value,
+                            },
+                          }))
+                        }
+                        value={draft.senderName}
+                      />
+                    </label>
+
+                    <label>
+                      Sender email
+                      <input
+                        onChange={(event) =>
+                          setConnectorDrafts((current) => ({
+                            ...current,
+                            [connector.id]: {
+                              ...draft,
+                              senderEmail: event.target.value,
+                            },
+                          }))
+                        }
+                        type="email"
+                        value={draft.senderEmail}
+                      />
+                    </label>
+
+                    <label>
+                      Reply-to email
+                      <input
+                        onChange={(event) =>
+                          setConnectorDrafts((current) => ({
+                            ...current,
+                            [connector.id]: {
+                              ...draft,
+                              replyToEmail: event.target.value,
+                            },
+                          }))
+                        }
+                        type="email"
+                        value={draft.replyToEmail}
+                      />
+                    </label>
+
+                    <label>
+                      Subject prefix
+                      <input
+                        onChange={(event) =>
+                          setConnectorDrafts((current) => ({
+                            ...current,
+                            [connector.id]: {
+                              ...draft,
+                              subjectPrefix: event.target.value,
+                            },
+                          }))
+                        }
+                        value={draft.subjectPrefix}
+                      />
+                    </label>
+
+                    <label className="checkbox-row">
+                      <input
+                        checked={draft.dispatchInviteLinks}
+                        onChange={(event) =>
+                          setConnectorDrafts((current) => ({
+                            ...current,
+                            [connector.id]: {
+                              ...draft,
+                              dispatchInviteLinks: event.target.checked,
+                            },
+                          }))
+                        }
+                        type="checkbox"
+                      />
+                      Invite links
+                    </label>
+
+                    <label className="checkbox-row">
+                      <input
+                        checked={draft.dispatchPasswordResets}
+                        onChange={(event) =>
+                          setConnectorDrafts((current) => ({
+                            ...current,
+                            [connector.id]: {
+                              ...draft,
+                              dispatchPasswordResets: event.target.checked,
+                            },
+                          }))
+                        }
+                        type="checkbox"
+                      />
+                      Password resets
+                    </label>
+
+                    <label className="checkbox-row">
+                      <input
+                        checked={draft.dispatchTaskAssignments}
+                        onChange={(event) =>
+                          setConnectorDrafts((current) => ({
+                            ...current,
+                            [connector.id]: {
+                              ...draft,
+                              dispatchTaskAssignments: event.target.checked,
+                            },
+                          }))
+                        }
+                        type="checkbox"
+                      />
+                      Task assignments
+                    </label>
+
+                    <label className="checkbox-row">
+                      <input
+                        checked={draft.dispatchEscalations}
+                        onChange={(event) =>
+                          setConnectorDrafts((current) => ({
+                            ...current,
+                            [connector.id]: {
+                              ...draft,
+                              dispatchEscalations: event.target.checked,
+                            },
+                          }))
+                        }
+                        type="checkbox"
+                      />
+                      Escalations
+                    </label>
+                  </div>
+
+                  <div className="user-admin-summary">
+                    <span>
+                      Last delivery:{" "}
+                      {connector.lastSync
+                        ? formatDateTime(connector.lastSync)
+                        : "No email sent yet"}
+                    </span>
+                    <span>{connector.connectorType}</span>
+                  </div>
+
+                  <div className="workspace-row-actions workspace-row-actions-wrap">
+                    <button
+                      className="secondary-button"
+                      disabled={updateConnectorMutation.isPending}
+                      onClick={() =>
+                        updateConnectorMutation.mutate({
+                          connectorId: connector.id,
+                          payload: draft,
+                        })
+                      }
+                      type="button"
+                    >
+                      Save connector
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={testConnectorMutation.isPending}
+                      onClick={() =>
+                        testConnectorMutation.mutate({
+                          connectorId: connector.id,
+                          recipientEmail: session.user.email,
+                        })
+                      }
+                      type="button"
+                    >
+                      Send test email
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+
+        {updateConnectorMutation.error ? (
+          <p className="form-feedback error">
+            {updateConnectorMutation.error.message}
+          </p>
+        ) : null}
+
+        {testConnectorMutation.error ? (
+          <p className="form-feedback error">
+            {testConnectorMutation.error.message}
+          </p>
+        ) : null}
+
+        {testConnectorMutation.data ? (
+          <div className="success-panel">
+            <h4>{testConnectorMutation.data.message}</h4>
+            <p>
+              Attempted {testConnectorMutation.data.attempted} connector(s) and
+              delivered through {testConnectorMutation.data.delivered}.
+            </p>
+          </div>
         ) : null}
       </section>
 

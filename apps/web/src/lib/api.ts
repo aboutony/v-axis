@@ -491,6 +491,26 @@ export type WebhooksResponse = {
   }>;
 };
 
+export type ConnectorsResponse = {
+  connectors: Array<{
+    id: string;
+    connectorType: string;
+    name: string;
+    status: "ACTIVE" | "INACTIVE" | "ERROR";
+    senderName: string;
+    senderEmail: string;
+    replyToEmail: string | null;
+    subjectPrefix: string;
+    dispatchInviteLinks: boolean;
+    dispatchPasswordResets: boolean;
+    dispatchTaskAssignments: boolean;
+    dispatchEscalations: boolean;
+    lastSync: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+};
+
 export type CreateWebhookInput = {
   name: string;
   url: string;
@@ -505,6 +525,32 @@ export type UpdateWebhookInput = {
   sharedSecret?: string | null;
   subscribedEvents?: string[];
   enabled?: boolean;
+};
+
+export type CreateConnectorInput = {
+  name: string;
+  status: "ACTIVE" | "INACTIVE";
+  senderName: string;
+  senderEmail: string;
+  replyToEmail?: string | null;
+  subjectPrefix?: string;
+  dispatchInviteLinks?: boolean;
+  dispatchPasswordResets?: boolean;
+  dispatchTaskAssignments?: boolean;
+  dispatchEscalations?: boolean;
+};
+
+export type UpdateConnectorInput = {
+  name?: string;
+  status?: "ACTIVE" | "INACTIVE";
+  senderName?: string;
+  senderEmail?: string;
+  replyToEmail?: string | null;
+  subjectPrefix?: string;
+  dispatchInviteLinks?: boolean;
+  dispatchPasswordResets?: boolean;
+  dispatchTaskAssignments?: boolean;
+  dispatchEscalations?: boolean;
 };
 
 type DocumentMutationResponse = {
@@ -1132,6 +1178,84 @@ export async function testWebhook(
     statusCode: number;
     availableEvents: WebhooksResponse["availableEvents"];
     webhooks: WebhooksResponse["webhooks"];
+  }>(response);
+}
+
+export async function fetchConnectors(accessToken: string) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/connectors`, {
+    headers: buildHeaders(accessToken),
+    credentials: "include",
+  });
+
+  return parseJson<ConnectorsResponse>(response);
+}
+
+export async function createConnector(
+  accessToken: string,
+  input: CreateConnectorInput,
+) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/connectors`, {
+    method: "POST",
+    headers: buildHeaders(accessToken, true),
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+
+  return parseJson<{
+    message: string;
+    connectors: ConnectorsResponse["connectors"];
+  }>(response);
+}
+
+export async function updateConnector(
+  accessToken: string,
+  connectorId: string,
+  input: UpdateConnectorInput,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/connectors/${connectorId}`,
+    {
+      method: "PATCH",
+      headers: buildHeaders(accessToken, true),
+      credentials: "include",
+      body: JSON.stringify(input),
+    },
+  );
+
+  return parseJson<{
+    message: string;
+    connectors: ConnectorsResponse["connectors"];
+  }>(response);
+}
+
+export async function testConnectorEmail(
+  accessToken: string,
+  connectorId: string,
+  recipientEmail?: string,
+) {
+  const body: {
+    recipientEmail?: string;
+  } = {};
+
+  if (recipientEmail) {
+    body.recipientEmail = recipientEmail;
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/connectors/${connectorId}/test-email`,
+    {
+      method: "POST",
+      headers: buildHeaders(accessToken, true),
+      credentials: "include",
+      body: JSON.stringify(body),
+    },
+  );
+
+  return parseJson<{
+    message: string;
+    attempted: number;
+    delivered: number;
+    connectors: ConnectorsResponse["connectors"];
   }>(response);
 }
 

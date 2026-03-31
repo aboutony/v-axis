@@ -8,6 +8,7 @@ import {
   entities,
   mfaEnrollments,
   notifications,
+  tenants,
   userActionTokens,
   userEntityAssignments,
   userSessions,
@@ -16,6 +17,10 @@ import {
 import { defaultPermissionsByRole, permissionFlags } from "@vaxis/domain";
 
 import { hashPassword } from "../lib/auth";
+import {
+  dispatchInviteEmail,
+  dispatchPasswordResetEmail,
+} from "../lib/connectors";
 import { ensureAuthenticated, ensurePermission } from "../lib/permissions";
 import { issueUserActionToken } from "../lib/user-actions";
 
@@ -378,6 +383,18 @@ async function buildUsersResponse(tenantId: string) {
   };
 }
 
+async function loadTenantClientName(tenantId: string) {
+  const [tenant] = await db
+    .select({
+      clientName: tenants.clientName,
+    })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+
+  return tenant?.clientName ?? "V-AXIS tenant";
+}
+
 export const userRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get("/api/v1/users", async (request, reply) => {
     if (!(await ensureAuthenticated(request, reply))) {
@@ -505,6 +522,16 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
             purpose: invite.purpose,
             expiresAt: invite.expiresAt.toISOString(),
           },
+        });
+
+        await dispatchInviteEmail({
+          tenantId: request.user.tenantId,
+          actorUserId: request.user.sub,
+          recipientEmail: user.email,
+          recipientName: user.fullName,
+          tenantName: await loadTenantClientName(request.user.tenantId),
+          inviteLink: invite.link,
+          expiresAt: invite.expiresAt.toISOString(),
         });
       }
 
@@ -770,6 +797,16 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
+    await dispatchInviteEmail({
+      tenantId: request.user.tenantId,
+      actorUserId: request.user.sub,
+      recipientEmail: user.email,
+      recipientName: user.fullName,
+      tenantName: await loadTenantClientName(request.user.tenantId),
+      inviteLink: invite.link,
+      expiresAt: invite.expiresAt.toISOString(),
+    });
+
     return {
       message: "Invite link generated.",
       invite: {
@@ -837,6 +874,16 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         metadata: {
           expiresAt: resetLink.expiresAt.toISOString(),
         },
+      });
+
+      await dispatchPasswordResetEmail({
+        tenantId: request.user.tenantId,
+        actorUserId: request.user.sub,
+        recipientEmail: user.email,
+        recipientName: user.fullName,
+        tenantName: await loadTenantClientName(request.user.tenantId),
+        resetLink: resetLink.link,
+        expiresAt: resetLink.expiresAt.toISOString(),
       });
 
       return {

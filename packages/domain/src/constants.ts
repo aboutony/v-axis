@@ -101,6 +101,8 @@ export const activityEventTypes = [
   "user.password_reset_requested",
   "user.password_reset_completed",
   "user.updated",
+  "connector.updated",
+  "email.sent",
   "tenant.bootstrapped",
   "webhook.updated",
 ] as const;

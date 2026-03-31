@@ -11,6 +11,7 @@ import { platformName } from "@vaxis/domain";
 import { apiEnv, jwtRuntime } from "./config";
 import { auditRoutes } from "./routes/audit";
 import { authRoutes } from "./routes/auth";
+import { connectorRoutes } from "./routes/connectors";
 import { dashboardRoutes } from "./routes/dashboard";
 import { documentRoutes } from "./routes/documents";
 import { governanceRoutes } from "./routes/governance";
@@ -76,6 +77,7 @@ export async function createApp() {
   await app.register(platformRoutes);
   await app.register(authRoutes);
   await app.register(auditRoutes);
+  await app.register(connectorRoutes);
   await app.register(userRoutes);
   await app.register(taxonomyRoutes);
   await app.register(documentRoutes);
