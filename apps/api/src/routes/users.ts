@@ -8,6 +8,7 @@ import {
   entities,
   mfaEnrollments,
   notifications,
+  userActionTokens,
   userEntityAssignments,
   userSessions,
   users,
@@ -16,6 +17,7 @@ import { defaultPermissionsByRole, permissionFlags } from "@vaxis/domain";
 
 import { hashPassword } from "../lib/auth";
 import { ensureAuthenticated, ensurePermission } from "../lib/permissions";
+import { issueUserActionToken } from "../lib/user-actions";
 
 const manageableUserRoleSchema = z.enum([
   "CLIENT_ADMIN",
@@ -34,6 +36,15 @@ function emptyStringToNull(value: unknown) {
   return value;
 }
 
+function emptyStringToUndefined(value: unknown) {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized === "" ? undefined : normalized;
+  }
+
+  return value;
+}
+
 const nullableTrimmedText = (maxLength: number) =>
   z.preprocess(
     emptyStringToNull,
@@ -45,10 +56,15 @@ const nullableUuid = z.preprocess(
   z.string().uuid().nullable().optional(),
 );
 
+const optionalPasswordSchema = z.preprocess(
+  emptyStringToUndefined,
+  z.string().min(12).max(128).optional(),
+);
+
 const userCreateSchema = z.object({
   fullName: z.string().trim().min(2).max(200),
   email: z.string().trim().toLowerCase().email(),
-  password: z.string().min(12).max(128),
+  password: optionalPasswordSchema,
   role: manageableUserRoleSchema.default("STAFF"),
   jobTitle: nullableTrimmedText(200),
   department: nullableTrimmedText(200),
@@ -56,13 +72,14 @@ const userCreateSchema = z.object({
   supervisorUserId: nullableUuid,
   entityIds: z.array(z.string().uuid()).max(100).default([]),
   mfaRequired: z.boolean().optional(),
+  issueInvite: z.boolean().optional(),
   permissions: z.array(permissionFlagSchema).optional(),
 });
 
 const userUpdateSchema = z.object({
   fullName: z.string().trim().min(2).max(200).optional(),
   email: z.string().trim().toLowerCase().email().optional(),
-  password: z.string().min(12).max(128).optional(),
+  password: optionalPasswordSchema,
   role: manageableUserRoleSchema.optional(),
   status: z.enum(["ACTIVE", "LOCKED", "DEACTIVATED"]).optional(),
   jobTitle: nullableTrimmedText(200),
@@ -209,7 +226,8 @@ async function syncUserAssignments(input: {
 }
 
 async function buildUsersResponse(tenantId: string) {
-  const [userRows, assignmentRows, entityRows, notificationRows] =
+  const now = new Date();
+  const [userRows, assignmentRows, entityRows, notificationRows, actionRows] =
     await Promise.all([
       db
         .select()
@@ -238,6 +256,19 @@ async function buildUsersResponse(tenantId: string) {
         })
         .from(notifications)
         .where(eq(notifications.tenantId, tenantId)),
+      db
+        .select({
+          userId: userActionTokens.userId,
+          purpose: userActionTokens.purpose,
+          expiresAt: userActionTokens.expiresAt,
+        })
+        .from(userActionTokens)
+        .where(
+          and(
+            eq(userActionTokens.tenantId, tenantId),
+            isNull(userActionTokens.consumedAt),
+          ),
+        ),
     ]);
 
   const userMap = new Map(userRows.map((user) => [user.id, user]));
@@ -264,6 +295,13 @@ async function buildUsersResponse(tenantId: string) {
   }
 
   const openNotificationsByUser = new Map<string, number>();
+  const openActionsByUser = new Map<
+    string,
+    {
+      invite: Date | null;
+      passwordReset: Date | null;
+    }
+  >();
 
   for (const notification of notificationRows) {
     if (
@@ -280,6 +318,32 @@ async function buildUsersResponse(tenantId: string) {
       notification.assignedTo,
       (openNotificationsByUser.get(notification.assignedTo) ?? 0) + 1,
     );
+  }
+
+  for (const action of actionRows) {
+    const expiresAt = new Date(action.expiresAt);
+
+    if (Number.isNaN(expiresAt.getTime()) || expiresAt <= now) {
+      continue;
+    }
+
+    const current = openActionsByUser.get(action.userId) ?? {
+      invite: null,
+      passwordReset: null,
+    };
+
+    if (action.purpose === "INVITE") {
+      if (!current.invite || current.invite < expiresAt) {
+        current.invite = expiresAt;
+      }
+    } else if (
+      action.purpose === "PASSWORD_RESET" &&
+      (!current.passwordReset || current.passwordReset < expiresAt)
+    ) {
+      current.passwordReset = expiresAt;
+    }
+
+    openActionsByUser.set(action.userId, current);
   }
 
   return {
@@ -302,6 +366,10 @@ async function buildUsersResponse(tenantId: string) {
         lastLoginAt: user.lastLoginAt,
         permissions: user.permissions,
         openNotificationCount: openNotificationsByUser.get(user.id) ?? 0,
+        pendingInviteExpiresAt:
+          openActionsByUser.get(user.id)?.invite?.toISOString() ?? null,
+        pendingPasswordResetExpiresAt:
+          openActionsByUser.get(user.id)?.passwordReset?.toISOString() ?? null,
         assignedEntities: assignmentsByUser.get(user.id) ?? [],
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
@@ -363,7 +431,10 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         supervisorUserId: input.supervisorUserId,
       });
 
-      const passwordHash = await hashPassword(input.password);
+      const passwordHash = input.password
+        ? await hashPassword(input.password)
+        : null;
+      const shouldIssueInvite = input.issueInvite ?? !input.password;
 
       const [user] = await db
         .insert(users)
@@ -396,6 +467,15 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         entityIds: assignedEntities.map((entity) => entity.id),
       });
 
+      const invite = shouldIssueInvite
+        ? await issueUserActionToken({
+            tenantId: request.user.tenantId,
+            userId: user.id,
+            issuedBy: request.user.sub,
+            purpose: "INVITE",
+          })
+        : null;
+
       await db.insert(auditLogs).values({
         tenantId: request.user.tenantId,
         userId: request.user.sub,
@@ -408,11 +488,36 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
           role: user.role,
           mfaRequired: user.mfaRequired,
           assignmentCount: assignedEntities.length,
+          inviteIssued: Boolean(invite),
         },
       });
 
+      if (invite) {
+        await db.insert(auditLogs).values({
+          tenantId: request.user.tenantId,
+          userId: request.user.sub,
+          eventType: "user.invited",
+          resourceType: "USER",
+          resourceId: user.id,
+          ipAddress: request.ip,
+          userAgent: normalizeUserAgent(request.headers["user-agent"]),
+          metadata: {
+            purpose: invite.purpose,
+            expiresAt: invite.expiresAt.toISOString(),
+          },
+        });
+      }
+
       return reply.code(201).send({
-        message: "User created.",
+        message: invite
+          ? "User created and invite link generated."
+          : "User created.",
+        invite: invite
+          ? {
+              link: invite.link,
+              expiresAt: invite.expiresAt.toISOString(),
+            }
+          : null,
         ...(await buildUsersResponse(request.user.tenantId)),
       });
     } catch (error) {
@@ -607,6 +712,143 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
   });
+
+  fastify.post("/api/v1/users/:id/send-invite", async (request, reply) => {
+    if (!(await ensureAuthenticated(request, reply))) {
+      return;
+    }
+
+    if (!ensurePermission(request, reply, "USER_MANAGE")) {
+      return;
+    }
+
+    const { id } = userParamsSchema.parse(request.params);
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.id, id),
+          eq(users.tenantId, request.user.tenantId),
+          isNull(users.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    if (!user) {
+      return reply.code(404).send({
+        error: "USER_NOT_FOUND",
+        message: "The user was not found in this tenant.",
+      });
+    }
+
+    if (user.status !== "ACTIVE") {
+      return reply.code(400).send({
+        error: "USER_NOT_ACTIVE",
+        message: "Only active users can receive invite links.",
+      });
+    }
+
+    const invite = await issueUserActionToken({
+      tenantId: request.user.tenantId,
+      userId: user.id,
+      issuedBy: request.user.sub,
+      purpose: "INVITE",
+    });
+
+    await db.insert(auditLogs).values({
+      tenantId: request.user.tenantId,
+      userId: request.user.sub,
+      eventType: "user.invited",
+      resourceType: "USER",
+      resourceId: user.id,
+      ipAddress: request.ip,
+      userAgent: normalizeUserAgent(request.headers["user-agent"]),
+      metadata: {
+        expiresAt: invite.expiresAt.toISOString(),
+      },
+    });
+
+    return {
+      message: "Invite link generated.",
+      invite: {
+        link: invite.link,
+        expiresAt: invite.expiresAt.toISOString(),
+      },
+      ...(await buildUsersResponse(request.user.tenantId)),
+    };
+  });
+
+  fastify.post(
+    "/api/v1/users/:id/password-reset-link",
+    async (request, reply) => {
+      if (!(await ensureAuthenticated(request, reply))) {
+        return;
+      }
+
+      if (!ensurePermission(request, reply, "USER_MANAGE")) {
+        return;
+      }
+
+      const { id } = userParamsSchema.parse(request.params);
+
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(
+          and(
+            eq(users.id, id),
+            eq(users.tenantId, request.user.tenantId),
+            isNull(users.deletedAt),
+          ),
+        )
+        .limit(1);
+
+      if (!user) {
+        return reply.code(404).send({
+          error: "USER_NOT_FOUND",
+          message: "The user was not found in this tenant.",
+        });
+      }
+
+      if (user.status !== "ACTIVE") {
+        return reply.code(400).send({
+          error: "USER_NOT_ACTIVE",
+          message: "Only active users can receive password reset links.",
+        });
+      }
+
+      const resetLink = await issueUserActionToken({
+        tenantId: request.user.tenantId,
+        userId: user.id,
+        issuedBy: request.user.sub,
+        purpose: "PASSWORD_RESET",
+      });
+
+      await db.insert(auditLogs).values({
+        tenantId: request.user.tenantId,
+        userId: request.user.sub,
+        eventType: "user.password_reset_requested",
+        resourceType: "USER",
+        resourceId: user.id,
+        ipAddress: request.ip,
+        userAgent: normalizeUserAgent(request.headers["user-agent"]),
+        metadata: {
+          expiresAt: resetLink.expiresAt.toISOString(),
+        },
+      });
+
+      return {
+        message: "Password reset link generated.",
+        passwordReset: {
+          link: resetLink.link,
+          expiresAt: resetLink.expiresAt.toISOString(),
+        },
+        ...(await buildUsersResponse(request.user.tenantId)),
+      };
+    },
+  );
 
   fastify.post("/api/v1/users/:id/reset-mfa", async (request, reply) => {
     if (!(await ensureAuthenticated(request, reply))) {

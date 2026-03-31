@@ -11,6 +11,7 @@ import {
   type BootstrapClientInput,
   type PlatformBootstrapResponse,
 } from "./lib/api";
+import { AccessPage } from "./pages/AccessPage";
 import { WorkspacePage, loadStoredSession } from "./pages/WorkspacePage";
 
 type ThemeMode = "light" | "dark";
@@ -168,6 +169,7 @@ export function App() {
             path="/architecture"
             element={<ArchitecturePage platformQuery={platformQuery} />}
           />
+          <Route path="/access" element={<AccessPage />} />
         </Routes>
       </main>
     </div>

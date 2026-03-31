@@ -20,6 +20,7 @@ import {
 
 import {
   activityEventTypes,
+  authActionPurposes,
   connectorStatuses,
   connectorTypes,
   documentSectors,
@@ -66,6 +67,10 @@ export const connectorTypeEnum = pgEnum("connector_type", connectorTypes);
 export const connectorStatusEnum = pgEnum(
   "connector_status",
   connectorStatuses,
+);
+export const authActionPurposeEnum = pgEnum(
+  "auth_action_purpose",
+  authActionPurposes,
 );
 export const activityEventTypeEnum = pgEnum(
   "activity_event_type",
@@ -171,6 +176,37 @@ export const userSessions = pgTable(
       .notNull(),
   },
   (table) => [index("user_sessions_user_idx").on(table.userId, table.expiresAt)],
+);
+
+export const userActionTokens = pgTable(
+  "user_action_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    issuedBy: uuid("issued_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    purpose: authActionPurposeEnum("purpose").notNull(),
+    tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("user_action_tokens_hash_idx").on(table.tokenHash),
+    index("user_action_tokens_user_purpose_idx").on(
+      table.userId,
+      table.purpose,
+      table.expiresAt,
+    ),
+  ],
 );
 
 export const mfaEnrollments = pgTable(
@@ -519,11 +555,18 @@ export const webhooks = pgTable(
     name: varchar("name", { length: 200 }).notNull(),
     url: text("url").notNull(),
     sharedSecretHash: text("shared_secret_hash").notNull(),
+    sharedSecretEncrypted: text("shared_secret_encrypted").notNull(),
     subscribedEvents: jsonb("subscribed_events")
       .$type<string[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
     enabled: boolean("enabled").notNull().default(true),
+    lastDeliveryAttemptAt: timestamp("last_delivery_attempt_at", {
+      withTimezone: true,
+    }),
+    lastDeliveryStatus: varchar("last_delivery_status", { length: 20 }),
+    lastResponseStatusCode: integer("last_response_status_code"),
+    lastDeliveryError: text("last_delivery_error"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

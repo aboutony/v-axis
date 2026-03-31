@@ -13,6 +13,8 @@ import {
 } from "@vaxis/db/schema";
 import { clampScore, getExpirySeverity } from "@vaxis/domain";
 
+import { emitTenantWebhookEvent } from "./webhooks";
+
 type RiskDocument = {
   id: string;
   title: string;
@@ -527,7 +529,12 @@ export async function syncEntityNotifications(input: {
         ? existing.status
         : "PENDING";
 
-    await db
+    const shouldRecordCreated =
+      !existing ||
+      existing.status === "RESOLVED" ||
+      existing.status === "CLOSED";
+
+    const [upsertedNotification] = await db
       .insert(notifications)
       .values({
         tenantId: input.tenantId,
@@ -564,7 +571,41 @@ export async function syncEntityNotifications(input: {
             nextStatus === "PENDING" ? null : (existing?.resolvedAt ?? null),
           updatedAt: new Date(),
         },
+      })
+      .returning({
+        id: notifications.id,
       });
+
+    if (shouldRecordCreated && upsertedNotification) {
+      await db.insert(auditLogs).values({
+        tenantId: input.tenantId,
+        userId: assigneeUserId,
+        eventType: "notification.created",
+        resourceType: "NOTIFICATION",
+        resourceId: upsertedNotification.id,
+        metadata: {
+          sourceKey: payload.sourceKey,
+          severity: alert.severity,
+          entityId: input.entityId,
+          title: payload.title,
+        },
+      });
+
+      await emitTenantWebhookEvent({
+        tenantId: input.tenantId,
+        eventType: "notification.created",
+        resourceType: "NOTIFICATION",
+        resourceId: upsertedNotification.id,
+        data: {
+          sourceKey: payload.sourceKey,
+          severity: alert.severity,
+          entityId: input.entityId,
+          title: payload.title,
+          message: payload.message,
+          dueDate: payload.dueDate ? payload.dueDate.toISOString() : null,
+        },
+      });
+    }
   }
 
   const staleNotifications = await db
@@ -782,6 +823,20 @@ export async function escalateOverdueNotifications(input: {
         previousEscalationLevel: notification.escalationLevel,
         nextEscalationLevel: updated.escalationLevel,
         reason: nextAssignee?.reason ?? "retained_assignee",
+      },
+    });
+
+    await emitTenantWebhookEvent({
+      tenantId: input.tenantId,
+      eventType: "notification.escalated",
+      resourceType: "NOTIFICATION",
+      resourceId: updated.id,
+      data: {
+        sourceKey: updated.sourceKey,
+        severity: updated.severity,
+        previousAssignedTo: notification.assignedTo,
+        nextAssignedTo,
+        escalationLevel: updated.escalationLevel,
       },
     });
   }

@@ -20,6 +20,9 @@ const envSchema = z.object({
   JWT_PRIVATE_KEY: z.string().optional(),
   JWT_PUBLIC_KEY: z.string().optional(),
   MFA_ENCRYPTION_SECRET: z.string().min(16).default("vaxis-mfa-secret-dev"),
+  APP_ENCRYPTION_SECRET: z.string().min(16).optional(),
+  APP_BASE_URL: z.string().url().optional(),
+  WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   VAULT_STORAGE_ROOT: z.string().default(".data/vault"),
 });
 
@@ -31,7 +34,17 @@ function normalizeMultilineSecret(value?: string): string | undefined {
   return value.replace(/\\n/g, "\n");
 }
 
-export const apiEnv = envSchema.parse(process.env);
+const parsedEnv = envSchema.parse(process.env);
+
+export const apiEnv = {
+  ...parsedEnv,
+  APP_ENCRYPTION_SECRET:
+    parsedEnv.APP_ENCRYPTION_SECRET ?? parsedEnv.MFA_ENCRYPTION_SECRET,
+  APP_BASE_URL:
+    parsedEnv.APP_BASE_URL ??
+    parsedEnv.CORS_ORIGIN.split(",")[0]?.trim() ??
+    "http://localhost:5173",
+};
 
 const privateKey = normalizeMultilineSecret(apiEnv.JWT_PRIVATE_KEY);
 const publicKey = normalizeMultilineSecret(apiEnv.JWT_PUBLIC_KEY);

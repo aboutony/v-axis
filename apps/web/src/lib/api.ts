@@ -99,6 +99,35 @@ export type AuthSession = {
   };
 };
 
+export type AuthActionStatusResponse = {
+  purpose: "INVITE" | "PASSWORD_RESET";
+  expiresAt: string;
+  tenant: {
+    id: string;
+    clientName: string;
+    slug: string;
+  };
+  user: {
+    id: string;
+    email: string;
+    fullName: string;
+  };
+};
+
+export type AuthActionCompletionResponse = {
+  message: string;
+  tenant: {
+    id: string;
+    clientName: string;
+    slug: string;
+  };
+  user: {
+    id: string;
+    email: string;
+    fullName: string;
+  };
+};
+
 export type MfaEnrollmentResponse = {
   message: string;
   enrollment: {
@@ -348,6 +377,8 @@ export type UsersResponse = {
     lastLoginAt: string | null;
     permissions: string[];
     openNotificationCount: number;
+    pendingInviteExpiresAt: string | null;
+    pendingPasswordResetExpiresAt: string | null;
     assignedEntities: Array<{
       id: string;
       entityName: string;
@@ -392,7 +423,7 @@ export type RegisterDocumentInput = {
 export type CreateUserInput = {
   fullName: string;
   email: string;
-  password: string;
+  password?: string | null;
   role: "CLIENT_ADMIN" | "SUBSIDIARY_MANAGER" | "STAFF";
   jobTitle?: string | null;
   department?: string | null;
@@ -400,12 +431,13 @@ export type CreateUserInput = {
   supervisorUserId?: string | null;
   entityIds?: string[];
   mfaRequired?: boolean;
+  issueInvite?: boolean;
 };
 
 export type UpdateUserInput = {
   fullName?: string;
   email?: string;
-  password?: string;
+  password?: string | null;
   role?: "CLIENT_ADMIN" | "SUBSIDIARY_MANAGER" | "STAFF";
   status?: "ACTIVE" | "LOCKED" | "DEACTIVATED";
   jobTitle?: string | null;
@@ -421,6 +453,58 @@ export type ReplaceDocumentVersionInput = {
   issueDate?: string | null;
   expiryDate?: string | null;
   notes?: string | null;
+};
+
+export type AuditLogsResponse = {
+  availableEventTypes: string[];
+  logs: Array<{
+    id: string;
+    tenantId: string | null;
+    userId: string | null;
+    eventType: string;
+    resourceType: string;
+    resourceId: string | null;
+    ipAddress: string | null;
+    userAgent: string | null;
+    metadata: Record<string, unknown>;
+    createdAt: string;
+    actorName: string | null;
+    actorEmail: string | null;
+  }>;
+};
+
+export type WebhooksResponse = {
+  availableEvents: string[];
+  webhooks: Array<{
+    id: string;
+    name: string;
+    url: string;
+    subscribedEvents: string[];
+    enabled: boolean;
+    secretConfigured: boolean;
+    lastDeliveryAttemptAt: string | null;
+    lastDeliveryStatus: string | null;
+    lastResponseStatusCode: number | null;
+    lastDeliveryError: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+};
+
+export type CreateWebhookInput = {
+  name: string;
+  url: string;
+  sharedSecret: string;
+  subscribedEvents: string[];
+  enabled?: boolean;
+};
+
+export type UpdateWebhookInput = {
+  name?: string;
+  url?: string;
+  sharedSecret?: string | null;
+  subscribedEvents?: string[];
+  enabled?: boolean;
 };
 
 type DocumentMutationResponse = {
@@ -523,6 +607,49 @@ export async function login(input: LoginInput) {
   });
 
   return parseJson<AuthSession>(response);
+}
+
+export async function fetchAuthActionStatus(token: string) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/auth/access/${encodeURIComponent(token)}`,
+    {
+      credentials: "include",
+    },
+  );
+
+  return parseJson<AuthActionStatusResponse>(response);
+}
+
+export async function acceptInvite(input: {
+  token: string;
+  fullName?: string;
+  password: string;
+}) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/invitations/accept`, {
+    method: "POST",
+    headers: buildHeaders(undefined, true),
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+
+  return parseJson<AuthActionCompletionResponse>(response);
+}
+
+export async function confirmPasswordReset(input: {
+  token: string;
+  password: string;
+}) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/auth/password-reset/confirm`,
+    {
+      method: "POST",
+      headers: buildHeaders(undefined, true),
+      credentials: "include",
+      body: JSON.stringify(input),
+    },
+  );
+
+  return parseJson<AuthActionCompletionResponse>(response);
 }
 
 export async function beginMfaEnrollment(accessToken: string) {
@@ -808,6 +935,10 @@ export async function createUser(accessToken: string, input: CreateUserInput) {
 
   return parseJson<{
     message: string;
+    invite: {
+      link: string;
+      expiresAt: string;
+    } | null;
     users: UsersResponse["users"];
   }>(response);
 }
@@ -843,6 +974,164 @@ export async function resetUserMfa(accessToken: string, userId: string) {
   return parseJson<{
     message: string;
     users: UsersResponse["users"];
+  }>(response);
+}
+
+export async function sendUserInvite(accessToken: string, userId: string) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/users/${userId}/send-invite`,
+    {
+      method: "POST",
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<{
+    message: string;
+    invite: {
+      link: string;
+      expiresAt: string;
+    };
+    users: UsersResponse["users"];
+  }>(response);
+}
+
+export async function generateUserPasswordResetLink(
+  accessToken: string,
+  userId: string,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/users/${userId}/password-reset-link`,
+    {
+      method: "POST",
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<{
+    message: string;
+    passwordReset: {
+      link: string;
+      expiresAt: string;
+    };
+    users: UsersResponse["users"];
+  }>(response);
+}
+
+export async function fetchAuditLogs(
+  accessToken: string,
+  input: {
+    limit?: number;
+    eventType?: string;
+    resourceType?: string;
+    userId?: string;
+  } = {},
+) {
+  const params = new URLSearchParams();
+
+  if (input.limit) {
+    params.set("limit", String(input.limit));
+  }
+
+  if (input.eventType) {
+    params.set("eventType", input.eventType);
+  }
+
+  if (input.resourceType) {
+    params.set("resourceType", input.resourceType);
+  }
+
+  if (input.userId) {
+    params.set("userId", input.userId);
+  }
+
+  const query = params.toString();
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/audit${query ? `?${query}` : ""}`,
+    {
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<AuditLogsResponse>(response);
+}
+
+export async function fetchWebhooks(accessToken: string) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/webhooks`, {
+    headers: buildHeaders(accessToken),
+    credentials: "include",
+  });
+
+  return parseJson<WebhooksResponse>(response);
+}
+
+export async function createWebhook(
+  accessToken: string,
+  input: CreateWebhookInput,
+) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/webhooks`, {
+    method: "POST",
+    headers: buildHeaders(accessToken, true),
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+
+  return parseJson<{
+    message: string;
+    availableEvents: WebhooksResponse["availableEvents"];
+    webhooks: WebhooksResponse["webhooks"];
+  }>(response);
+}
+
+export async function updateWebhook(
+  accessToken: string,
+  webhookId: string,
+  input: UpdateWebhookInput,
+) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/webhooks/${webhookId}`, {
+    method: "PATCH",
+    headers: buildHeaders(accessToken, true),
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+
+  return parseJson<{
+    message: string;
+    availableEvents: WebhooksResponse["availableEvents"];
+    webhooks: WebhooksResponse["webhooks"];
+  }>(response);
+}
+
+export async function testWebhook(
+  accessToken: string,
+  webhookId: string,
+  eventType?: string,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/webhooks/${webhookId}/test`,
+    {
+      method: "POST",
+      headers: buildHeaders(accessToken, true),
+      credentials: "include",
+      body: JSON.stringify(
+        eventType
+          ? {
+              eventType,
+            }
+          : {},
+      ),
+    },
+  );
+
+  return parseJson<{
+    message: string;
+    deliveryId: string;
+    statusCode: number;
+    availableEvents: WebhooksResponse["availableEvents"];
+    webhooks: WebhooksResponse["webhooks"];
   }>(response);
 }
 

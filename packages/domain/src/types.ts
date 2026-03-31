@@ -1,5 +1,6 @@
 import {
   activityEventTypes,
+  authActionPurposes,
   connectorStatuses,
   connectorTypes,
   documentSectors,
@@ -36,4 +37,5 @@ export type SeverityLevel = (typeof severityLevels)[number];
 export type OfflineSyncStatus = (typeof offlineSyncStatuses)[number];
 export type ConnectorType = (typeof connectorTypes)[number];
 export type ConnectorStatus = (typeof connectorStatuses)[number];
+export type AuthActionPurpose = (typeof authActionPurposes)[number];
 export type ActivityEventType = (typeof activityEventTypes)[number];

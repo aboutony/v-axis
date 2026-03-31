@@ -14,6 +14,7 @@ import {
   categories,
   mfaEnrollments,
   tenants,
+  userActionTokens,
   userSessions,
   users,
 } from "@vaxis/db/schema";
@@ -38,6 +39,7 @@ import {
   verifyTotpCode,
 } from "../lib/mfa";
 import { ensureAuthenticated } from "../lib/permissions";
+import { inspectUserActionToken } from "../lib/user-actions";
 import type { AuthTokenPayload } from "../types/auth";
 
 const bootstrapSchema = z.object({
@@ -70,6 +72,27 @@ const mfaVerificationSchema = z.object({
   code: z.string().trim().min(6).max(64),
 });
 
+const actionTokenParamsSchema = z.object({
+  token: z.string().trim().min(20).max(255),
+});
+
+const acceptInviteSchema = z.object({
+  token: z.string().trim().min(20).max(255),
+  fullName: z
+    .string()
+    .trim()
+    .min(2)
+    .max(200)
+    .optional()
+    .or(z.literal("")),
+  password: z.string().min(12).max(128),
+});
+
+const passwordResetSchema = z.object({
+  token: z.string().trim().min(20).max(255),
+  password: z.string().min(12).max(128),
+});
+
 function buildAuthPayload(input: {
   userId: string;
   tenantId: string;
@@ -88,6 +111,18 @@ function buildAuthPayload(input: {
 
 function normalizeUserAgent(userAgent: string | string[] | undefined) {
   return Array.isArray(userAgent) ? userAgent.join(" ") : userAgent;
+}
+
+function getActionTokenReplyCode(code: string) {
+  switch (code) {
+    case "ACTION_TOKEN_NOT_FOUND":
+      return 404;
+    case "ACTION_TOKEN_CONSUMED":
+    case "ACTION_TOKEN_EXPIRED":
+      return 410;
+    default:
+      return 400;
+  }
 }
 
 function buildSessionUser(
@@ -610,6 +645,234 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       message: "Session closed.",
     };
   });
+
+  fastify.get("/api/v1/auth/access/:token", async (request, reply) => {
+    const { token } = actionTokenParamsSchema.parse(request.params);
+    const inspection = await inspectUserActionToken(token);
+
+    if (!inspection.ok) {
+      return reply.code(getActionTokenReplyCode(inspection.code)).send({
+        error: inspection.code,
+        message: inspection.message,
+      });
+    }
+
+    return {
+      purpose: inspection.record.token.purpose,
+      expiresAt: inspection.record.token.expiresAt,
+      tenant: {
+        id: inspection.record.tenant.id,
+        clientName: inspection.record.tenant.clientName,
+        slug: inspection.record.tenant.slug,
+      },
+      user: {
+        id: inspection.record.user.id,
+        email: inspection.record.user.email,
+        fullName: inspection.record.user.fullName,
+      },
+    };
+  });
+
+  fastify.post("/api/v1/auth/invitations/accept", async (request, reply) => {
+    const input = acceptInviteSchema.parse(request.body);
+    const inspection = await inspectUserActionToken(input.token, "INVITE");
+
+    if (!inspection.ok) {
+      return reply.code(getActionTokenReplyCode(inspection.code)).send({
+        error: inspection.code,
+        message: inspection.message,
+      });
+    }
+
+    const now = new Date();
+    const passwordHash = await hashPassword(input.password);
+    const normalizedFullName = input.fullName?.trim()
+      ? input.fullName.trim()
+      : inspection.record.user.fullName;
+
+    let completion:
+      | (typeof users.$inferSelect)
+      | undefined;
+
+    try {
+      completion = await db.transaction(async (tx) => {
+        const [tokenRow] = await tx
+          .update(userActionTokens)
+          .set({ consumedAt: now })
+          .where(
+            and(
+              eq(userActionTokens.id, inspection.record.token.id),
+              isNull(userActionTokens.consumedAt),
+            ),
+          )
+          .returning({ id: userActionTokens.id });
+
+        if (!tokenRow) {
+          throw new Error("This invite link has already been used.");
+        }
+
+        const [updatedUser] = await tx
+          .update(users)
+          .set({
+            passwordHash,
+            fullName: normalizedFullName,
+            status: "ACTIVE",
+            mfaRequired: true,
+            updatedAt: now,
+          })
+          .where(eq(users.id, inspection.record.user.id))
+          .returning();
+
+        await tx
+          .update(userSessions)
+          .set({ revokedAt: now })
+          .where(
+            and(
+              eq(userSessions.userId, inspection.record.user.id),
+              isNull(userSessions.revokedAt),
+            ),
+          );
+
+        await tx.insert(auditLogs).values({
+          tenantId: inspection.record.tenant.id,
+          userId: inspection.record.user.id,
+          eventType: "user.updated",
+          resourceType: "USER",
+          resourceId: inspection.record.user.id,
+          ipAddress: request.ip,
+          userAgent: normalizeUserAgent(request.headers["user-agent"]),
+          metadata: {
+            action: "invite_accepted",
+          },
+        });
+
+        return updatedUser;
+      });
+    } catch (error) {
+      return reply.code(409).send({
+        error: "ACTION_TOKEN_CONSUMED",
+        message:
+          error instanceof Error
+            ? error.message
+            : "This invite link can no longer be used.",
+      });
+    }
+
+    return {
+      message: "Invitation accepted. Sign in from the workspace to continue.",
+      tenant: {
+        id: inspection.record.tenant.id,
+        clientName: inspection.record.tenant.clientName,
+        slug: inspection.record.tenant.slug,
+      },
+      user: completion
+        ? {
+            id: completion.id,
+            email: completion.email,
+            fullName: completion.fullName,
+          }
+        : {
+            id: inspection.record.user.id,
+            email: inspection.record.user.email,
+            fullName: normalizedFullName,
+          },
+    };
+  });
+
+  fastify.post(
+    "/api/v1/auth/password-reset/confirm",
+    async (request, reply) => {
+      const input = passwordResetSchema.parse(request.body);
+      const inspection = await inspectUserActionToken(
+        input.token,
+        "PASSWORD_RESET",
+      );
+
+      if (!inspection.ok) {
+        return reply.code(getActionTokenReplyCode(inspection.code)).send({
+          error: inspection.code,
+          message: inspection.message,
+        });
+      }
+
+      const now = new Date();
+      const passwordHash = await hashPassword(input.password);
+
+      try {
+        await db.transaction(async (tx) => {
+          const [tokenRow] = await tx
+            .update(userActionTokens)
+            .set({ consumedAt: now })
+            .where(
+              and(
+                eq(userActionTokens.id, inspection.record.token.id),
+                isNull(userActionTokens.consumedAt),
+              ),
+            )
+            .returning({ id: userActionTokens.id });
+
+          if (!tokenRow) {
+            throw new Error(
+              "This password reset link has already been used.",
+            );
+          }
+
+          await tx
+            .update(users)
+            .set({
+              passwordHash,
+              updatedAt: now,
+            })
+            .where(eq(users.id, inspection.record.user.id));
+
+          await tx
+            .update(userSessions)
+            .set({ revokedAt: now })
+            .where(
+              and(
+                eq(userSessions.userId, inspection.record.user.id),
+                isNull(userSessions.revokedAt),
+              ),
+            );
+
+          await tx.insert(auditLogs).values({
+            tenantId: inspection.record.tenant.id,
+            userId: inspection.record.user.id,
+            eventType: "user.password_reset_completed",
+            resourceType: "USER",
+            resourceId: inspection.record.user.id,
+            ipAddress: request.ip,
+            userAgent: normalizeUserAgent(request.headers["user-agent"]),
+            metadata: {
+              action: "password_reset_completed",
+            },
+          });
+        });
+      } catch (error) {
+        return reply.code(409).send({
+          error: "ACTION_TOKEN_CONSUMED",
+          message:
+            error instanceof Error
+              ? error.message
+              : "This password reset link can no longer be used.",
+        });
+      }
+
+      return {
+        message: "Password reset complete. Sign in with the new password.",
+        tenant: {
+          id: inspection.record.tenant.id,
+          clientName: inspection.record.tenant.clientName,
+          slug: inspection.record.tenant.slug,
+        },
+        user: {
+          id: inspection.record.user.id,
+          email: inspection.record.user.email,
+          fullName: inspection.record.user.fullName,
+        },
+      };
+    },
+  );
 
   fastify.post("/api/v1/auth/mfa/totp/enroll", async (request, reply) => {
     if (!(await ensureAuthenticated(request, reply))) {

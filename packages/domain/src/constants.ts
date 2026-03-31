@@ -79,6 +79,8 @@ export const connectorTypes = [
 
 export const connectorStatuses = ["ACTIVE", "INACTIVE", "ERROR"] as const;
 
+export const authActionPurposes = ["INVITE", "PASSWORD_RESET"] as const;
+
 export const activityEventTypes = [
   "document.uploaded",
   "document.replaced",
@@ -95,6 +97,10 @@ export const activityEventTypes = [
   "user.login.succeeded",
   "user.login.failed",
   "user.created",
+  "user.invited",
+  "user.password_reset_requested",
+  "user.password_reset_completed",
   "user.updated",
   "tenant.bootstrapped",
+  "webhook.updated",
 ] as const;

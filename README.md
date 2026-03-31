@@ -7,8 +7,8 @@ V-AXIS is a multi-tenant governance platform for high-trust document operations 
 - Monorepo structure with `apps/web`, `apps/api`, `packages/domain`, and `packages/db`
 - Shared domain package for roles, permissions, document taxonomy, and DNA-code utilities
 - PostgreSQL schema for tenants, users, taxonomy, documents, sessions, notifications, audit logs, risk scores, connectors, and webhooks
-- Fastify API with OpenAPI docs, tenant bootstrap, JWT sessions, TOTP MFA enrollment and enforcement, taxonomy controls, user administration, governance routes, escalation workflows, and vault-style document upload/version endpoints
-- React/Vite command-center shell with a real bootstrap form, tenant workspace, MFA setup, taxonomy controls, user ownership management, document registration, file uploads, dashboard views, rules management, and actionable notifications
+- Fastify API with OpenAPI docs, tenant bootstrap, JWT sessions, TOTP MFA enrollment and enforcement, invite and reset links, taxonomy controls, user administration, governance routes, escalation workflows, audit exploration, managed webhooks, and vault-style document upload/version endpoints
+- React/Vite command-center shell with a real bootstrap form, tenant workspace, MFA setup, invite/reset access flow, taxonomy controls, user ownership management, document registration, file uploads, dashboard views, audit visibility, webhook controls, and actionable notifications
 - Docker Compose stack for PostgreSQL, Redis, and Mailpit
 
 ## Stack
@@ -62,7 +62,10 @@ npm run dev
 ## Environment Notes
 
 - `MFA_ENCRYPTION_SECRET` protects stored TOTP secrets. Replace it before any shared or production deployment.
+- `APP_ENCRYPTION_SECRET` protects other platform secrets such as outbound webhook shared secrets. If omitted, it falls back to `MFA_ENCRYPTION_SECRET`.
+- `APP_BASE_URL` controls the access-link destination used for invite and password-reset links.
 - `VAULT_STORAGE_ROOT` controls the local filesystem vault path. The default is `.data/vault`, which is ignored by git.
+- `WEBHOOK_TIMEOUT_MS` controls the outbound delivery timeout for webhook attempts.
 - Docker is still required for live Postgres verification unless you point `DATABASE_URL` at another PostgreSQL instance.
 
 ## Current Priority Path
@@ -71,9 +74,10 @@ npm run dev
 2. Sign into the Workspace screen with the new tenant admin.
 3. Complete MFA setup for the tenant admin on first login.
 4. Rename category slots, add entities, and register or upload seeded documents.
-5. Create tenant users, assign supervisors and entity ownership, and enforce MFA enrollment.
+5. Create tenant users, leave passwords blank when desired, and issue invite links from the workspace.
 6. Define entity document rules, review the generated notification queue, and escalate overdue work where needed.
-7. Verify dashboard summaries and risk scoring against live database data.
+7. Configure signed webhooks for outbound alert delivery and review the audit explorer.
+8. Verify dashboard summaries and risk scoring against live database data.
 
 ## Repo Notes
 

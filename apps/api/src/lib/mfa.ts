@@ -1,19 +1,10 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-} from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 import { authenticator } from "otplib";
 import QRCode from "qrcode";
 
-import { apiEnv } from "../config";
 import { hashToken } from "./auth";
-
-const encryptionKey = createHash("sha256")
-  .update(apiEnv.MFA_ENCRYPTION_SECRET)
-  .digest();
+import { decryptSensitiveValue, encryptSensitiveValue } from "./secrets";
 
 authenticator.options = {
   window: 1,
@@ -21,41 +12,11 @@ authenticator.options = {
 };
 
 export function encryptSecret(secret: string) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey, iv);
-  const encrypted = Buffer.concat([
-    cipher.update(secret, "utf8"),
-    cipher.final(),
-  ]);
-  const tag = cipher.getAuthTag();
-
-  return [
-    iv.toString("base64url"),
-    tag.toString("base64url"),
-    encrypted.toString("base64url"),
-  ].join(":");
+  return encryptSensitiveValue(secret);
 }
 
 export function decryptSecret(payload: string) {
-  const [iv, tag, encrypted] = payload.split(":");
-
-  if (!iv || !tag || !encrypted) {
-    throw new Error("Invalid encrypted secret payload.");
-  }
-
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    encryptionKey,
-    Buffer.from(iv, "base64url"),
-  );
-  decipher.setAuthTag(Buffer.from(tag, "base64url"));
-
-  const decrypted = Buffer.concat([
-    decipher.update(Buffer.from(encrypted, "base64url")),
-    decipher.final(),
-  ]);
-
-  return decrypted.toString("utf8");
+  return decryptSensitiveValue(payload);
 }
 
 export async function createTotpEnrollment(input: {

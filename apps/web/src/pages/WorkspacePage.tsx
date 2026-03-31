@@ -5,11 +5,13 @@ import {
   acknowledgeNotification,
   ApiError,
   beginMfaEnrollment,
+  createWebhook,
   createUser,
   createEntity,
   createRule,
   deleteRule,
   escalateOverdueNotifications,
+  fetchAuditLogs,
   fetchDashboardSummary,
   fetchDocuments,
   fetchDocumentTypes,
@@ -17,17 +19,23 @@ import {
   fetchRules,
   fetchTaxonomy,
   fetchUsers,
+  fetchWebhooks,
+  generateUserPasswordResetLink,
   login,
   refreshGovernance,
   resetUserMfa,
   registerDocument,
   replaceDocumentFile,
   resolveNotification,
+  sendUserInvite,
+  testWebhook,
   toggleCriticalMaster,
   updateCategory,
   updateUser,
+  updateWebhook,
   uploadDocument,
   verifyTotpEnrollment,
+  type CreateWebhookInput,
   type AuthSession,
   type CreateUserInput,
   type CreateEntityInput,
@@ -35,6 +43,7 @@ import {
   type RegisterDocumentInput,
   type RuleInput,
   type UpdateUserInput,
+  type UpdateWebhookInput,
   type UsersResponse,
 } from "../lib/api";
 
@@ -60,6 +69,14 @@ type UserDraft = {
   supervisorUserId: string | null;
   entityIds: string[];
   mfaRequired: boolean;
+};
+
+type WebhookDraft = {
+  name: string;
+  url: string;
+  sharedSecret: string;
+  subscribedEvents: string[];
+  enabled: boolean;
 };
 
 function buildUserDraft(user: UsersResponse["users"][number]): UserDraft {
@@ -138,8 +155,34 @@ export function WorkspacePage({
     supervisorUserId: null,
     entityIds: [],
     mfaRequired: true,
+    issueInvite: true,
   });
   const [userDrafts, setUserDrafts] = useState<Record<string, UserDraft>>({});
+  const [latestAccessLink, setLatestAccessLink] = useState<{
+    label: string;
+    email: string;
+    link: string;
+    expiresAt: string;
+  } | null>(null);
+  const [auditFilters, setAuditFilters] = useState({
+    eventType: "",
+    resourceType: "",
+    userId: "",
+  });
+  const [webhookForm, setWebhookForm] = useState<CreateWebhookInput>({
+    name: "",
+    url: "",
+    sharedSecret: "",
+    subscribedEvents: [
+      "notification.created",
+      "notification.escalated",
+      "notification.resolved",
+    ],
+    enabled: true,
+  });
+  const [webhookDrafts, setWebhookDrafts] = useState<
+    Record<string, WebhookDraft>
+  >({});
 
   const accessToken = session?.accessToken;
   const mfaSetupRequired = Boolean(
@@ -186,10 +229,44 @@ export function WorkspacePage({
     queryFn: () => fetchUsers(accessToken!),
     enabled: Boolean(accessToken),
   });
+  const auditQuery = useQuery({
+    queryKey: ["workspace-audit", accessToken, auditFilters],
+    queryFn: () => {
+      const nextFilters: {
+        limit?: number;
+        eventType?: string;
+        resourceType?: string;
+        userId?: string;
+      } = {
+        limit: 50,
+      };
+
+      if (auditFilters.eventType) {
+        nextFilters.eventType = auditFilters.eventType;
+      }
+
+      if (auditFilters.resourceType) {
+        nextFilters.resourceType = auditFilters.resourceType;
+      }
+
+      if (auditFilters.userId) {
+        nextFilters.userId = auditFilters.userId;
+      }
+
+      return fetchAuditLogs(accessToken!, nextFilters);
+    },
+    enabled: Boolean(accessToken),
+  });
+  const webhooksQuery = useQuery({
+    queryKey: ["workspace-webhooks", accessToken],
+    queryFn: () => fetchWebhooks(accessToken!),
+    enabled: Boolean(accessToken),
+  });
 
   const categories = taxonomyQuery.data?.categories ?? [];
   const allEntities = categories.flatMap((category) => category.entities);
   const workspaceUsers = usersQuery.data?.users ?? [];
+  const webhookEvents = webhooksQuery.data?.availableEvents ?? [];
 
   const [categoryEdits, setCategoryEdits] = useState<
     Record<
@@ -262,6 +339,35 @@ export function WorkspacePage({
     setUserDrafts(nextDrafts);
   }, [workspaceUsers]);
 
+  useEffect(() => {
+    if (
+      webhookEvents.length > 0 &&
+      webhookForm.subscribedEvents.length === 0
+    ) {
+      setWebhookForm((current) => ({
+        ...current,
+        subscribedEvents: webhookEvents.slice(0, 3),
+      }));
+    }
+  }, [webhookEvents, webhookForm.subscribedEvents.length]);
+
+  useEffect(() => {
+    const nextDrafts = Object.fromEntries(
+      (webhooksQuery.data?.webhooks ?? []).map((webhook) => [
+        webhook.id,
+        {
+          name: webhook.name,
+          url: webhook.url,
+          sharedSecret: "",
+          subscribedEvents: webhook.subscribedEvents,
+          enabled: webhook.enabled,
+        },
+      ]),
+    );
+
+    setWebhookDrafts(nextDrafts);
+  }, [webhooksQuery.data?.webhooks]);
+
   function persistSession(nextSession: AuthSession | null) {
     if (nextSession) {
       localStorage.setItem(sessionStorageKey, JSON.stringify(nextSession));
@@ -281,6 +387,25 @@ export function WorkspacePage({
       ...session,
       user: nextUser,
     });
+  }
+
+  async function publishAccessLink(input: {
+    label: string;
+    email: string;
+    link: string;
+    expiresAt: string;
+  }) {
+    setLatestAccessLink(input);
+
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(input.link);
+    } catch {
+      // Clipboard access is best-effort only.
+    }
   }
 
   const loginMutation = useMutation({
@@ -325,6 +450,12 @@ export function WorkspacePage({
       }),
       queryClient.invalidateQueries({
         queryKey: ["workspace-users", accessToken],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["workspace-audit", accessToken],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["workspace-webhooks", accessToken],
       }),
     ]);
   };
@@ -452,7 +583,7 @@ export function WorkspacePage({
   });
   const createUserMutation = useMutation({
     mutationFn: (input: CreateUserInput) => createUser(accessToken!, input),
-    onSuccess: async () => {
+    onSuccess: async (response, variables) => {
       await refreshWorkspace();
       setUserForm({
         fullName: "",
@@ -465,7 +596,17 @@ export function WorkspacePage({
         supervisorUserId: null,
         entityIds: [],
         mfaRequired: true,
+        issueInvite: true,
       });
+
+      if (response.invite) {
+        await publishAccessLink({
+          label: "Invite link copied",
+          email: variables.email,
+          link: response.invite.link,
+          expiresAt: response.invite.expiresAt,
+        });
+      }
     },
   });
   const updateUserMutation = useMutation({
@@ -475,6 +616,55 @@ export function WorkspacePage({
   });
   const resetUserMfaMutation = useMutation({
     mutationFn: (userId: string) => resetUserMfa(accessToken!, userId),
+    onSuccess: refreshWorkspace,
+  });
+  const sendInviteMutation = useMutation({
+    mutationFn: (input: { userId: string; email: string }) =>
+      sendUserInvite(accessToken!, input.userId),
+    onSuccess: async (response, variables) => {
+      await refreshWorkspace();
+      await publishAccessLink({
+        label: "Invite link copied",
+        email: variables.email,
+        link: response.invite.link,
+        expiresAt: response.invite.expiresAt,
+      });
+    },
+  });
+  const passwordResetLinkMutation = useMutation({
+    mutationFn: (input: { userId: string; email: string }) =>
+      generateUserPasswordResetLink(accessToken!, input.userId),
+    onSuccess: async (response, variables) => {
+      await refreshWorkspace();
+      await publishAccessLink({
+        label: "Password reset link copied",
+        email: variables.email,
+        link: response.passwordReset.link,
+        expiresAt: response.passwordReset.expiresAt,
+      });
+    },
+  });
+  const createWebhookMutation = useMutation({
+    mutationFn: (input: CreateWebhookInput) => createWebhook(accessToken!, input),
+    onSuccess: async () => {
+      await refreshWorkspace();
+      setWebhookForm({
+        name: "",
+        url: "",
+        sharedSecret: "",
+        subscribedEvents: webhookEvents.slice(0, 3),
+        enabled: true,
+      });
+    },
+  });
+  const updateWebhookMutation = useMutation({
+    mutationFn: (input: { webhookId: string; payload: UpdateWebhookInput }) =>
+      updateWebhook(accessToken!, input.webhookId, input.payload),
+    onSuccess: refreshWorkspace,
+  });
+  const testWebhookMutation = useMutation({
+    mutationFn: (input: { webhookId: string; eventType?: string }) =>
+      testWebhook(accessToken!, input.webhookId, input.eventType),
     onSuccess: refreshWorkspace,
   });
   const escalateNotificationsMutation = useMutation({
@@ -617,6 +807,19 @@ export function WorkspacePage({
           </button>
         </div>
       </section>
+
+      {latestAccessLink ? (
+        <section className="card workspace-header-card">
+          <div className="success-panel access-link-panel">
+            <h4>{latestAccessLink.label}</h4>
+            <p>
+              {latestAccessLink.email} now has a secure link ready until{" "}
+              {formatDateTime(latestAccessLink.expiresAt)}.
+            </p>
+            <p className="mono-line">{latestAccessLink.link}</p>
+          </div>
+        </section>
+      ) : null}
 
       {mfaSetupRequired ? (
         <section className="card workspace-header-card">
@@ -1074,9 +1277,14 @@ export function WorkspacePage({
                   }))
                 }
                 type="password"
-                value={userForm.password}
+                value={userForm.password ?? ""}
               />
             </label>
+
+            <p className="helper-copy">
+              Leave the password empty to generate an invite-based activation
+              link instead of pre-setting credentials.
+            </p>
 
             <label>
               Role
@@ -1163,6 +1371,20 @@ export function WorkspacePage({
               Force MFA enrollment
             </label>
 
+            <label className="checkbox-row">
+              <input
+                checked={Boolean(userForm.issueInvite)}
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    issueInvite: event.target.checked,
+                  }))
+                }
+                type="checkbox"
+              />
+              Generate invite link
+            </label>
+
             <button
               className="primary-button"
               disabled={createUserMutation.isPending}
@@ -1170,7 +1392,9 @@ export function WorkspacePage({
             >
               {createUserMutation.isPending
                 ? "Creating user..."
-                : "Create user"}
+                : userForm.issueInvite || !userForm.password
+                  ? "Create user and issue invite"
+                  : "Create user"}
             </button>
 
             {createUserMutation.error ? (
@@ -1354,6 +1578,18 @@ export function WorkspacePage({
                       Supervisor: {user.supervisorName ?? "Not assigned"}
                     </span>
                     <span>Last login: {formatDateTime(user.lastLoginAt)}</span>
+                    <span>
+                      Invite:{" "}
+                      {user.pendingInviteExpiresAt
+                        ? `Open until ${formatDateTime(user.pendingInviteExpiresAt)}`
+                        : "None"}
+                    </span>
+                    <span>
+                      Reset link:{" "}
+                      {user.pendingPasswordResetExpiresAt
+                        ? `Open until ${formatDateTime(user.pendingPasswordResetExpiresAt)}`
+                        : "None"}
+                    </span>
                   </div>
 
                   <div className="workspace-row-actions workspace-row-actions-wrap">
@@ -1378,6 +1614,32 @@ export function WorkspacePage({
                     >
                       Reset MFA
                     </button>
+                    <button
+                      className="secondary-button"
+                      disabled={sendInviteMutation.isPending}
+                      onClick={() =>
+                        sendInviteMutation.mutate({
+                          userId: user.id,
+                          email: user.email,
+                        })
+                      }
+                      type="button"
+                    >
+                      Generate invite
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={passwordResetLinkMutation.isPending}
+                      onClick={() =>
+                        passwordResetLinkMutation.mutate({
+                          userId: user.id,
+                          email: user.email,
+                        })
+                      }
+                      type="button"
+                    >
+                      Generate reset link
+                    </button>
                   </div>
                 </article>
               );
@@ -1394,6 +1656,18 @@ export function WorkspacePage({
         {resetUserMfaMutation.error ? (
           <p className="form-feedback error">
             {resetUserMfaMutation.error.message}
+          </p>
+        ) : null}
+
+        {sendInviteMutation.error ? (
+          <p className="form-feedback error">
+            {sendInviteMutation.error.message}
+          </p>
+        ) : null}
+
+        {passwordResetLinkMutation.error ? (
+          <p className="form-feedback error">
+            {passwordResetLinkMutation.error.message}
           </p>
         ) : null}
       </section>
@@ -1814,6 +2088,325 @@ export function WorkspacePage({
         ) : null}
       </section>
 
+      <section className="card workspace-header-card">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">Webhook Connectors</p>
+            <h3>Signed outbound delivery for notification events</h3>
+          </div>
+        </div>
+
+        <div className="team-admin-grid">
+          <form
+            className="launch-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              createWebhookMutation.mutate(webhookForm);
+            }}
+          >
+            <label>
+              Webhook name
+              <input
+                onChange={(event) =>
+                  setWebhookForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                value={webhookForm.name}
+              />
+            </label>
+
+            <label>
+              Destination URL
+              <input
+                onChange={(event) =>
+                  setWebhookForm((current) => ({
+                    ...current,
+                    url: event.target.value,
+                  }))
+                }
+                placeholder="https://example.com/v-axis"
+                value={webhookForm.url}
+              />
+            </label>
+
+            <label>
+              Shared secret
+              <input
+                onChange={(event) =>
+                  setWebhookForm((current) => ({
+                    ...current,
+                    sharedSecret: event.target.value,
+                  }))
+                }
+                type="password"
+                value={webhookForm.sharedSecret}
+              />
+            </label>
+
+            <label>
+              Subscribed events
+              <select
+                multiple
+                onChange={(event) =>
+                  setWebhookForm((current) => ({
+                    ...current,
+                    subscribedEvents: readSelectedValues(event.target),
+                  }))
+                }
+                size={Math.min(Math.max(webhookEvents.length, 3), 8)}
+                value={webhookForm.subscribedEvents}
+              >
+                {webhookEvents.map((eventType) => (
+                  <option key={eventType} value={eventType}>
+                    {eventType}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="checkbox-row">
+              <input
+                checked={Boolean(webhookForm.enabled)}
+                onChange={(event) =>
+                  setWebhookForm((current) => ({
+                    ...current,
+                    enabled: event.target.checked,
+                  }))
+                }
+                type="checkbox"
+              />
+              Enable on creation
+            </label>
+
+            <button
+              className="primary-button"
+              disabled={createWebhookMutation.isPending}
+              type="submit"
+            >
+              {createWebhookMutation.isPending
+                ? "Creating webhook..."
+                : "Create webhook"}
+            </button>
+
+            {createWebhookMutation.error ? (
+              <p className="form-feedback error">
+                {createWebhookMutation.error.message}
+              </p>
+            ) : null}
+          </form>
+
+          <div className="user-admin-list">
+            {(webhooksQuery.data?.webhooks ?? []).map((webhook) => {
+              const draft = webhookDrafts[webhook.id] ?? {
+                name: webhook.name,
+                url: webhook.url,
+                sharedSecret: "",
+                subscribedEvents: webhook.subscribedEvents,
+                enabled: webhook.enabled,
+              };
+
+              return (
+                <article className="user-admin-card" key={webhook.id}>
+                  <div className="category-editor-top">
+                    <div>
+                      <strong>{webhook.name}</strong>
+                      <p className="helper-copy">{webhook.url}</p>
+                    </div>
+                    <span className="meta-pill">
+                      {webhook.enabled ? "Enabled" : "Paused"}
+                    </span>
+                  </div>
+
+                  <div className="user-admin-fields">
+                    <label>
+                      Name
+                      <input
+                        onChange={(event) =>
+                          setWebhookDrafts((current) => ({
+                            ...current,
+                            [webhook.id]: {
+                              ...draft,
+                              name: event.target.value,
+                            },
+                          }))
+                        }
+                        value={draft.name}
+                      />
+                    </label>
+
+                    <label>
+                      URL
+                      <input
+                        onChange={(event) =>
+                          setWebhookDrafts((current) => ({
+                            ...current,
+                            [webhook.id]: {
+                              ...draft,
+                              url: event.target.value,
+                            },
+                          }))
+                        }
+                        value={draft.url}
+                      />
+                    </label>
+
+                    <label>
+                      Rotate shared secret
+                      <input
+                        onChange={(event) =>
+                          setWebhookDrafts((current) => ({
+                            ...current,
+                            [webhook.id]: {
+                              ...draft,
+                              sharedSecret: event.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="Leave blank to keep current secret"
+                        type="password"
+                        value={draft.sharedSecret}
+                      />
+                    </label>
+
+                    <label>
+                      Subscribed events
+                      <select
+                        multiple
+                        onChange={(event) =>
+                          setWebhookDrafts((current) => ({
+                            ...current,
+                            [webhook.id]: {
+                              ...draft,
+                              subscribedEvents: readSelectedValues(
+                                event.target,
+                              ),
+                            },
+                          }))
+                        }
+                        size={Math.min(Math.max(webhookEvents.length, 3), 8)}
+                        value={draft.subscribedEvents}
+                      >
+                        {webhookEvents.map((eventType) => (
+                          <option key={eventType} value={eventType}>
+                            {eventType}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="checkbox-row">
+                      <input
+                        checked={draft.enabled}
+                        onChange={(event) =>
+                          setWebhookDrafts((current) => ({
+                            ...current,
+                            [webhook.id]: {
+                              ...draft,
+                              enabled: event.target.checked,
+                            },
+                          }))
+                        }
+                        type="checkbox"
+                      />
+                      Enabled
+                    </label>
+                  </div>
+
+                  <div className="user-admin-summary">
+                    <span>
+                      Last delivery:{" "}
+                      {webhook.lastDeliveryAttemptAt
+                        ? formatDateTime(webhook.lastDeliveryAttemptAt)
+                        : "None yet"}
+                    </span>
+                    <span>
+                      Status: {webhook.lastDeliveryStatus ?? "Unverified"}
+                    </span>
+                    <span>
+                      HTTP:{" "}
+                      {webhook.lastResponseStatusCode === null
+                        ? "n/a"
+                        : webhook.lastResponseStatusCode}
+                    </span>
+                    <span>
+                      Secret:{" "}
+                      {webhook.secretConfigured ? "Configured" : "Missing"}
+                    </span>
+                  </div>
+
+                  {webhook.lastDeliveryError ? (
+                    <p className="form-feedback error">
+                      {webhook.lastDeliveryError}
+                    </p>
+                  ) : null}
+
+                  <div className="workspace-row-actions workspace-row-actions-wrap">
+                    <button
+                      className="secondary-button"
+                      disabled={updateWebhookMutation.isPending}
+                      onClick={() =>
+                        updateWebhookMutation.mutate({
+                          webhookId: webhook.id,
+                          payload: draft,
+                        })
+                      }
+                      type="button"
+                    >
+                      Save webhook
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={testWebhookMutation.isPending}
+                      onClick={() => {
+                        const nextPayload: {
+                          webhookId: string;
+                          eventType?: string;
+                        } = {
+                          webhookId: webhook.id,
+                        };
+
+                        if (draft.subscribedEvents[0]) {
+                          nextPayload.eventType = draft.subscribedEvents[0];
+                        }
+
+                        testWebhookMutation.mutate(nextPayload);
+                      }}
+                      type="button"
+                    >
+                      Send test
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+
+        {updateWebhookMutation.error ? (
+          <p className="form-feedback error">
+            {updateWebhookMutation.error.message}
+          </p>
+        ) : null}
+
+        {testWebhookMutation.error ? (
+          <p className="form-feedback error">
+            {testWebhookMutation.error.message}
+          </p>
+        ) : null}
+
+        {testWebhookMutation.data ? (
+          <div className="success-panel">
+            <h4>{testWebhookMutation.data.message}</h4>
+            <p>
+              Delivery {testWebhookMutation.data.deliveryId} returned HTTP{" "}
+              {testWebhookMutation.data.statusCode}.
+            </p>
+          </div>
+        ) : null}
+      </section>
+
       <section className="card">
         <div className="card-header">
           <div>
@@ -1895,6 +2488,103 @@ export function WorkspacePage({
           <p className="form-feedback error">
             {escalateNotificationsMutation.error.message}
           </p>
+        ) : null}
+      </section>
+
+      <section className="card workspace-header-card">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">Audit Explorer</p>
+            <h3>Filter the operational footprint by actor, event, or resource</h3>
+          </div>
+        </div>
+
+        <div className="audit-filter-grid">
+          <label>
+            Event type
+            <select
+              onChange={(event) =>
+                setAuditFilters((current) => ({
+                  ...current,
+                  eventType: event.target.value,
+                }))
+              }
+              value={auditFilters.eventType}
+            >
+              <option value="">All events</option>
+              {(auditQuery.data?.availableEventTypes ?? []).map((eventType) => (
+                <option key={eventType} value={eventType}>
+                  {eventType}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Resource type
+            <input
+              onChange={(event) =>
+                setAuditFilters((current) => ({
+                  ...current,
+                  resourceType: event.target.value,
+                }))
+              }
+              placeholder="USER, NOTIFICATION, DOCUMENT"
+              value={auditFilters.resourceType}
+            />
+          </label>
+
+          <label>
+            Actor
+            <select
+              onChange={(event) =>
+                setAuditFilters((current) => ({
+                  ...current,
+                  userId: event.target.value,
+                }))
+              }
+              value={auditFilters.userId}
+            >
+              <option value="">All actors</option>
+              {workspaceUsers.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.fullName}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="audit-log-list">
+          {(auditQuery.data?.logs ?? []).map((log) => (
+            <article className="audit-log-card" key={log.id}>
+              <div className="category-editor-top">
+                <div>
+                  <strong>{log.eventType}</strong>
+                  <p className="helper-copy">
+                    {log.actorName
+                      ? `${log.actorName} (${log.actorEmail})`
+                      : "System actor"}
+                  </p>
+                </div>
+                <span className="meta-pill">{formatDateTime(log.createdAt)}</span>
+              </div>
+
+              <div className="user-admin-summary">
+                <span>Resource: {log.resourceType}</span>
+                <span>Resource ID: {log.resourceId ?? "none"}</span>
+                <span>IP: {log.ipAddress ?? "n/a"}</span>
+              </div>
+
+              <pre className="audit-metadata">
+                {JSON.stringify(log.metadata, null, 2)}
+              </pre>
+            </article>
+          ))}
+        </div>
+
+        {auditQuery.error ? (
+          <p className="form-feedback error">{auditQuery.error.message}</p>
         ) : null}
       </section>
     </div>

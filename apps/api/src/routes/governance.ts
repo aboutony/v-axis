@@ -18,6 +18,7 @@ import {
   refreshTenantGovernance,
 } from "../lib/governance";
 import { ensureAuthenticated, ensurePermission } from "../lib/permissions";
+import { emitTenantWebhookEvent } from "../lib/webhooks";
 
 const ruleCreateSchema = z.object({
   entityType: z.enum(["SUBSIDIARY", "JV", "ASSOCIATE", "BRANCH"]),
@@ -397,6 +398,18 @@ export const governanceRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
+      await emitTenantWebhookEvent({
+        tenantId: request.user.tenantId,
+        eventType: "notification.acknowledged",
+        resourceType: "NOTIFICATION",
+        resourceId: updated.id,
+        data: {
+          sourceKey: updated.sourceKey,
+          status: updated.status,
+          acknowledgedAt: updated.acknowledgedAt?.toISOString() ?? null,
+        },
+      });
+
       return {
         message: "Notification acknowledged.",
         notification: updated,
@@ -447,6 +460,18 @@ export const governanceRoutes: FastifyPluginAsync = async (fastify) => {
       userAgent: request.headers["user-agent"],
       metadata: {
         sourceKey: updated.sourceKey,
+      },
+    });
+
+    await emitTenantWebhookEvent({
+      tenantId: request.user.tenantId,
+      eventType: "notification.resolved",
+      resourceType: "NOTIFICATION",
+      resourceId: updated.id,
+      data: {
+        sourceKey: updated.sourceKey,
+        status: updated.status,
+        resolvedAt: updated.resolvedAt?.toISOString() ?? null,
       },
     });
 

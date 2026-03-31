@@ -9,6 +9,7 @@ import swaggerUi from "@fastify/swagger-ui";
 import { platformName } from "@vaxis/domain";
 
 import { apiEnv, jwtRuntime } from "./config";
+import { auditRoutes } from "./routes/audit";
 import { authRoutes } from "./routes/auth";
 import { dashboardRoutes } from "./routes/dashboard";
 import { documentRoutes } from "./routes/documents";
@@ -17,6 +18,7 @@ import { healthRoutes } from "./routes/health";
 import { platformRoutes } from "./routes/platform";
 import { taxonomyRoutes } from "./routes/taxonomy";
 import { userRoutes } from "./routes/users";
+import { webhookRoutes } from "./routes/webhooks";
 
 export async function createApp() {
   const logger =
@@ -73,11 +75,13 @@ export async function createApp() {
   await app.register(healthRoutes);
   await app.register(platformRoutes);
   await app.register(authRoutes);
+  await app.register(auditRoutes);
   await app.register(userRoutes);
   await app.register(taxonomyRoutes);
   await app.register(documentRoutes);
   await app.register(dashboardRoutes);
   await app.register(governanceRoutes);
+  await app.register(webhookRoutes);
 
   return app;
 }
