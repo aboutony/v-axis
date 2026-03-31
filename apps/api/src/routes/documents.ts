@@ -1,54 +1,171 @@
-import type { FastifyPluginAsync } from "fastify";
-import { and, asc, eq, gte, isNull, lt, or } from "drizzle-orm";
-import { z } from "zod";
+import type { MultipartFile } from "@fastify/multipart";
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
+import { ZodError, z } from "zod";
 
 import { db } from "@vaxis/db";
 import {
   auditLogs,
-  categories,
   documentTypes,
   documents,
   documentVersions,
   entities,
 } from "@vaxis/db/schema";
-import { toDnaCode } from "@vaxis/domain";
 
+import {
+  createDocumentRecord,
+  DocumentServiceError,
+  isDocumentServiceError,
+  replaceDocumentVersion,
+} from "../lib/document-service";
 import {
   deriveDocumentStatusFromExpiry,
   getDaysRemaining,
-  refreshEntityGovernance,
 } from "../lib/governance";
 import { ensureAuthenticated, ensurePermission } from "../lib/permissions";
+import { persistMultipartFile, removeStoredFile } from "../lib/vault";
 
 const documentListQuerySchema = z.object({
   entityId: z.string().uuid().optional(),
 });
 
+function emptyStringToNull(value: unknown) {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized === "" ? null : normalized;
+  }
+
+  return value;
+}
+
+const nullableShortText = (maxLength: number) =>
+  z.preprocess(
+    emptyStringToNull,
+    z.string().max(maxLength).nullable().optional(),
+  );
+
+const nullableDate = z.preprocess(
+  emptyStringToNull,
+  z.string().date().nullable().optional(),
+);
+
+const nullableNumber = (schema: z.ZodNumber) =>
+  z.preprocess((value) => {
+    const normalized = emptyStringToNull(value);
+
+    if (normalized === null || normalized === undefined) {
+      return normalized;
+    }
+
+    if (typeof normalized === "string") {
+      return Number(normalized);
+    }
+
+    return normalized;
+  }, schema.nullable().optional());
+
+const nullableBoolean = z.preprocess((value) => {
+  if (typeof value === "string") {
+    if (value === "true") {
+      return true;
+    }
+
+    if (value === "false") {
+      return false;
+    }
+  }
+
+  return value;
+}, z.boolean().optional());
+
 const documentRegistrationSchema = z.object({
   entityId: z.string().uuid(),
   documentTypeId: z.string().uuid(),
-  title: z.string().min(2).max(500),
-  crNumber: z.string().max(50).nullable().optional(),
-  chamberNumber: z.string().max(50).nullable().optional(),
-  companyIdentifier: z.string().max(100).nullable().optional(),
-  costAmount: z.number().nonnegative().nullable().optional(),
-  durationYears: z.number().positive().max(99).nullable().optional(),
-  issueDate: z.string().date().nullable().optional(),
-  expiryDate: z.string().date().nullable().optional(),
-  notes: z.string().max(4000).nullable().optional(),
-  filePath: z.string().max(2000).nullable().optional(),
-  fileMimeType: z.string().max(100).nullable().optional(),
-  fileSizeBytes: z.number().int().nonnegative().nullable().optional(),
-  checksumSha256: z
-    .string()
-    .regex(/^[a-fA-F0-9]{64}$/)
-    .nullable()
-    .optional(),
-  isCriticalMaster: z.boolean().optional(),
+  title: z.string().trim().min(2).max(500),
+  crNumber: nullableShortText(50),
+  chamberNumber: nullableShortText(50),
+  companyIdentifier: nullableShortText(100),
+  costAmount: nullableNumber(z.number().nonnegative()),
+  durationYears: nullableNumber(z.number().positive().max(99)),
+  issueDate: nullableDate,
+  expiryDate: nullableDate,
+  notes: nullableShortText(4000),
+  isCriticalMaster: nullableBoolean,
 });
 
-function parseDateInput(value: string | null | undefined) {
-  return value ? new Date(value) : null;
+const replaceVersionSchema = z.object({
+  title: z.preprocess(
+    emptyStringToNull,
+    z.string().trim().min(2).max(500).nullable().optional(),
+  ),
+  issueDate: nullableDate,
+  expiryDate: nullableDate,
+  notes: nullableShortText(4000),
+});
+
+const documentParamsSchema = z.object({
+  documentId: z.string().uuid(),
+});
+
+const criticalMasterSchema = z.object({
+  isCriticalMaster: z.boolean(),
+});
+
+function normalizeUserAgent(userAgent: string | string[] | undefined) {
+  return Array.isArray(userAgent) ? userAgent.join(" ") : userAgent;
+}
+
+function sendDocumentError(reply: FastifyReply, error: unknown) {
+  if (error instanceof ZodError) {
+    return reply.code(400).send({
+      error: "INVALID_DOCUMENT_INPUT",
+      message: error.issues[0]?.message ?? "The document request was invalid.",
+      details: error.issues,
+    });
+  }
+
+  if (isDocumentServiceError(error)) {
+    return reply.code(error.statusCode).send({
+      error: error.code,
+      message: error.message,
+    });
+  }
+
+  return reply.code(500).send({
+    error: "DOCUMENT_REQUEST_FAILED",
+    message:
+      error instanceof Error
+        ? error.message
+        : "Unable to process this document request.",
+  });
+}
+
+async function readMultipartPayload(request: FastifyRequest) {
+  const fields: Record<string, string> = {};
+  let file: MultipartFile | undefined;
+
+  for await (const part of request.parts()) {
+    if (part.type === "file") {
+      if (file) {
+        part.file.resume();
+        throw new DocumentServiceError(
+          400,
+          "MULTIPLE_FILES_NOT_SUPPORTED",
+          "Only one file can be uploaded per request.",
+        );
+      }
+
+      file = part;
+      continue;
+    }
+
+    fields[part.fieldname] = String(part.value);
+  }
+
+  return {
+    fields,
+    file,
+  };
 }
 
 export const documentRoutes: FastifyPluginAsync = async (fastify) => {
@@ -80,34 +197,54 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
 
     const query = documentListQuerySchema.parse(request.query);
 
-    const documentRows = await db
-      .select()
-      .from(documents)
-      .where(
-        and(
-          eq(documents.tenantId, request.user.tenantId),
-          query.entityId ? eq(documents.entityId, query.entityId) : undefined,
-          isNull(documents.deletedAt),
-        ),
-      );
-
-    const typeRows = await db
-      .select()
-      .from(documentTypes)
-      .where(
-        or(
-          eq(documentTypes.tenantId, request.user.tenantId),
-          isNull(documentTypes.tenantId),
-        ),
-      );
-
-    const entityRows = await db
-      .select()
-      .from(entities)
-      .where(eq(entities.tenantId, request.user.tenantId));
+    const [documentRows, typeRows, entityRows, versionRows] = await Promise.all(
+      [
+        db
+          .select()
+          .from(documents)
+          .where(
+            and(
+              eq(documents.tenantId, request.user.tenantId),
+              query.entityId
+                ? eq(documents.entityId, query.entityId)
+                : undefined,
+              isNull(documents.deletedAt),
+            ),
+          ),
+        db
+          .select()
+          .from(documentTypes)
+          .where(
+            or(
+              eq(documentTypes.tenantId, request.user.tenantId),
+              isNull(documentTypes.tenantId),
+            ),
+          ),
+        db
+          .select()
+          .from(entities)
+          .where(eq(entities.tenantId, request.user.tenantId)),
+        db
+          .select({
+            documentId: documentVersions.documentId,
+            versionNumber: documentVersions.versionNumber,
+          })
+          .from(documentVersions)
+          .where(eq(documentVersions.tenantId, request.user.tenantId)),
+      ],
+    );
 
     const typeMap = new Map(typeRows.map((type) => [type.id, type]));
     const entityMap = new Map(entityRows.map((entity) => [entity.id, entity]));
+    const latestVersionMap = new Map<string, number>();
+
+    for (const version of versionRows) {
+      const currentVersion = latestVersionMap.get(version.documentId) ?? 0;
+      latestVersionMap.set(
+        version.documentId,
+        Math.max(currentVersion, version.versionNumber),
+      );
+    }
 
     return {
       documents: documentRows
@@ -126,6 +263,7 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
             documentTypeLabel: type?.label ?? "Unknown",
             sector: type?.sector ?? "INTERNAL",
             entityName: entity?.entityName ?? "Unknown entity",
+            latestVersionNumber: latestVersionMap.get(document.id) ?? 0,
           };
         })
         .sort((left, right) => {
@@ -155,208 +293,283 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
       return;
     }
 
-    const input = documentRegistrationSchema.parse(request.body);
-    const issueDate = parseDateInput(input.issueDate);
-    const expiryDate = parseDateInput(input.expiryDate);
-
-    if (issueDate && issueDate > new Date()) {
-      return reply.code(400).send({
-        error: "INVALID_ISSUE_DATE",
-        message: "Issue date cannot be in the future.",
-      });
-    }
-
-    if (issueDate && expiryDate && expiryDate <= issueDate) {
-      return reply.code(400).send({
-        error: "INVALID_EXPIRY_DATE",
-        message: "Expiry date must be after issue date.",
-      });
-    }
-
-    const [entity] = await db
-      .select({
-        id: entities.id,
-        tenantId: entities.tenantId,
-        categoryId: entities.categoryId,
-        entityCode: entities.entityCode,
-        subDesignator: entities.subDesignator,
-      })
-      .from(entities)
-      .where(
-        and(
-          eq(entities.id, input.entityId),
-          eq(entities.tenantId, request.user.tenantId),
-        ),
-      )
-      .limit(1);
-
-    if (!entity) {
-      return reply.code(404).send({
-        error: "ENTITY_NOT_FOUND",
-        message: "The selected entity was not found in this tenant.",
-      });
-    }
-
-    const [category] = await db
-      .select({
-        id: categories.id,
-        slotNumber: categories.slotNumber,
-      })
-      .from(categories)
-      .where(
-        and(
-          eq(categories.id, entity.categoryId),
-          eq(categories.tenantId, request.user.tenantId),
-        ),
-      )
-      .limit(1);
-
-    if (!category) {
-      return reply.code(404).send({
-        error: "CATEGORY_NOT_FOUND",
-        message: "Unable to resolve the category for this entity.",
-      });
-    }
-
-    const [documentType] = await db
-      .select()
-      .from(documentTypes)
-      .where(
-        and(
-          eq(documentTypes.id, input.documentTypeId),
-          or(
-            eq(documentTypes.tenantId, request.user.tenantId),
-            isNull(documentTypes.tenantId),
-          ),
-        ),
-      )
-      .limit(1);
-
-    if (!documentType) {
-      return reply.code(404).send({
-        error: "DOCUMENT_TYPE_NOT_FOUND",
-        message: "The selected document type was not found.",
-      });
-    }
-
-    if (documentType.requiresCr && !input.crNumber) {
-      return reply.code(400).send({
-        error: "CR_NUMBER_REQUIRED",
-        message: "CR number is required for this document type.",
-      });
-    }
-
-    if (documentType.requiresExpiry && !expiryDate) {
-      return reply.code(400).send({
-        error: "EXPIRY_REQUIRED",
-        message: "Expiry date is required for this document type.",
-      });
-    }
-
-    const year = new Date().getFullYear();
-    const yearStart = new Date(`${year}-01-01T00:00:00.000Z`);
-    const nextYearStart = new Date(`${year + 1}-01-01T00:00:00.000Z`);
-
-    const yearDocuments = await db
-      .select({ id: documents.id })
-      .from(documents)
-      .where(
-        and(
-          eq(documents.tenantId, request.user.tenantId),
-          eq(documents.entityId, entity.id),
-          gte(documents.createdAt, yearStart),
-          lt(documents.createdAt, nextYearStart),
-          isNull(documents.deletedAt),
-        ),
-      );
-
-    const dnaCode = toDnaCode({
-      categorySlot: category.slotNumber,
-      subDesignator: entity.subDesignator,
-      entityCode: entity.entityCode,
-      year,
-      sequence: yearDocuments.length + 1,
-    });
-
-    const derivedStatus = expiryDate
-      ? deriveDocumentStatusFromExpiry(expiryDate)
-      : "ACTIVE";
-
-    const [registeredDocument] = await db
-      .insert(documents)
-      .values({
+    try {
+      const input = documentRegistrationSchema.parse(request.body);
+      const result = await createDocumentRecord({
+        ...input,
         tenantId: request.user.tenantId,
-        entityId: entity.id,
-        dnaCode,
-        documentTypeId: documentType.id,
-        title: input.title,
-        crNumber: input.crNumber ?? null,
-        chamberNumber: input.chamberNumber ?? null,
-        companyIdentifier: input.companyIdentifier ?? null,
-        costAmount: input.costAmount?.toString() ?? null,
-        durationYears: input.durationYears?.toString() ?? null,
-        issueDate: input.issueDate ?? null,
-        expiryDate: input.expiryDate ?? null,
-        status: derivedStatus,
-        notes: input.notes ?? null,
-        filePath: input.filePath ?? null,
-        fileMimeType: input.fileMimeType ?? null,
-        fileSizeBytes: input.fileSizeBytes ?? null,
-        checksumSha256: input.checksumSha256 ?? null,
-        isCriticalMaster: input.isCriticalMaster ?? false,
         createdBy: request.user.sub,
-        updatedBy: request.user.sub,
-      })
-      .returning();
-
-    if (!registeredDocument) {
-      return reply.code(500).send({
-        error: "DOCUMENT_CREATE_FAILED",
-        message: "Unable to register the document.",
+        ipAddress: request.ip,
+        userAgent: normalizeUserAgent(request.headers["user-agent"]),
       });
-    }
 
-    if (input.filePath) {
-      await db.insert(documentVersions).values({
-        tenantId: request.user.tenantId,
-        documentId: registeredDocument.id,
-        versionNumber: 1,
-        filePath: input.filePath,
-        fileMimeType: input.fileMimeType ?? null,
-        fileSizeBytes: input.fileSizeBytes ?? null,
-        checksumSha256: input.checksumSha256 ?? null,
-        uploadedBy: request.user.sub,
+      return reply.code(201).send({
+        message: "Document registered.",
+        document: result.document,
+        riskSnapshot: result.riskSnapshot,
       });
+    } catch (error) {
+      return sendDocumentError(reply, error);
     }
-
-    await db.insert(auditLogs).values({
-      tenantId: request.user.tenantId,
-      userId: request.user.sub,
-      eventType: "document.uploaded",
-      resourceType: "DOCUMENT",
-      resourceId: registeredDocument.id,
-      ipAddress: request.ip,
-      userAgent: request.headers["user-agent"],
-      metadata: {
-        dnaCode,
-        entityId: entity.id,
-        documentTypeId: documentType.id,
-      },
-    });
-
-    const riskSnapshot = await refreshEntityGovernance({
-      tenantId: request.user.tenantId,
-      entityId: entity.id,
-    });
-
-    return reply.code(201).send({
-      message: "Document registered.",
-      document: {
-        ...registeredDocument,
-        derivedStatus,
-        daysRemaining: getDaysRemaining(registeredDocument.expiryDate),
-      },
-      riskSnapshot,
-    });
   });
+
+  fastify.post("/api/v1/documents/upload", async (request, reply) => {
+    if (!(await ensureAuthenticated(request, reply))) {
+      return;
+    }
+
+    if (!ensurePermission(request, reply, "DOCUMENT_UPLOAD")) {
+      return;
+    }
+
+    if (!request.isMultipart()) {
+      return reply.code(415).send({
+        error: "MULTIPART_REQUIRED",
+        message: "Use multipart/form-data to upload a document file.",
+      });
+    }
+
+    let storedFile:
+      | Awaited<ReturnType<typeof persistMultipartFile>>
+      | undefined;
+
+    try {
+      const { fields, file } = await readMultipartPayload(request);
+
+      if (!file) {
+        return reply.code(400).send({
+          error: "FILE_REQUIRED",
+          message: "Select a file to upload.",
+        });
+      }
+
+      const input = documentRegistrationSchema.parse(fields);
+
+      storedFile = await persistMultipartFile({
+        file,
+        tenantId: request.user.tenantId,
+        entityId: input.entityId,
+      });
+
+      const result = await createDocumentRecord({
+        ...input,
+        tenantId: request.user.tenantId,
+        createdBy: request.user.sub,
+        file: storedFile,
+        ipAddress: request.ip,
+        userAgent: normalizeUserAgent(request.headers["user-agent"]),
+      });
+
+      return reply.code(201).send({
+        message: "Document uploaded to the vault.",
+        document: result.document,
+        riskSnapshot: result.riskSnapshot,
+      });
+    } catch (error) {
+      if (storedFile) {
+        await removeStoredFile(storedFile.relativePath).catch(() => undefined);
+      }
+
+      return sendDocumentError(reply, error);
+    }
+  });
+
+  fastify.post(
+    "/api/v1/documents/:documentId/versions",
+    async (request, reply) => {
+      if (!(await ensureAuthenticated(request, reply))) {
+        return;
+      }
+
+      if (!ensurePermission(request, reply, "DOCUMENT_MANAGE")) {
+        return;
+      }
+
+      if (!request.isMultipart()) {
+        return reply.code(415).send({
+          error: "MULTIPART_REQUIRED",
+          message: "Use multipart/form-data to upload a replacement file.",
+        });
+      }
+
+      const { documentId } = documentParamsSchema.parse(request.params);
+      const [document] = await db
+        .select({
+          id: documents.id,
+          entityId: documents.entityId,
+        })
+        .from(documents)
+        .where(
+          and(
+            eq(documents.id, documentId),
+            eq(documents.tenantId, request.user.tenantId),
+            isNull(documents.deletedAt),
+          ),
+        )
+        .limit(1);
+
+      if (!document) {
+        return reply.code(404).send({
+          error: "DOCUMENT_NOT_FOUND",
+          message: "The document was not found in this tenant.",
+        });
+      }
+
+      let storedFile:
+        | Awaited<ReturnType<typeof persistMultipartFile>>
+        | undefined;
+
+      try {
+        const { fields, file } = await readMultipartPayload(request);
+
+        if (!file) {
+          return reply.code(400).send({
+            error: "FILE_REQUIRED",
+            message: "Select a file to upload.",
+          });
+        }
+
+        const input = replaceVersionSchema.parse(fields);
+
+        storedFile = await persistMultipartFile({
+          file,
+          tenantId: request.user.tenantId,
+          entityId: document.entityId,
+          documentId,
+        });
+
+        const result = await replaceDocumentVersion({
+          ...input,
+          tenantId: request.user.tenantId,
+          documentId,
+          updatedBy: request.user.sub,
+          file: storedFile,
+          ipAddress: request.ip,
+          userAgent: normalizeUserAgent(request.headers["user-agent"]),
+        });
+
+        return reply.code(201).send({
+          message: "Document version uploaded.",
+          document: result.document,
+          riskSnapshot: result.riskSnapshot,
+          versionNumber: result.versionNumber,
+        });
+      } catch (error) {
+        if (storedFile) {
+          await removeStoredFile(storedFile.relativePath).catch(
+            () => undefined,
+          );
+        }
+
+        return sendDocumentError(reply, error);
+      }
+    },
+  );
+
+  fastify.get(
+    "/api/v1/documents/:documentId/versions",
+    async (request, reply) => {
+      if (!(await ensureAuthenticated(request, reply))) {
+        return;
+      }
+
+      const { documentId } = documentParamsSchema.parse(request.params);
+
+      const versions = await db
+        .select()
+        .from(documentVersions)
+        .where(
+          and(
+            eq(documentVersions.documentId, documentId),
+            eq(documentVersions.tenantId, request.user.tenantId),
+          ),
+        )
+        .orderBy(desc(documentVersions.versionNumber));
+
+      return {
+        versions,
+      };
+    },
+  );
+
+  fastify.patch(
+    "/api/v1/documents/:documentId/critical-master",
+    async (request, reply) => {
+      if (!(await ensureAuthenticated(request, reply))) {
+        return;
+      }
+
+      if (!ensurePermission(request, reply, "DOCUMENT_MANAGE")) {
+        return;
+      }
+
+      const { documentId } = documentParamsSchema.parse(request.params);
+      const input = criticalMasterSchema.parse(request.body);
+
+      const [updated] = await db
+        .update(documents)
+        .set({
+          isCriticalMaster: input.isCriticalMaster,
+          updatedBy: request.user.sub,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(documents.id, documentId),
+            eq(documents.tenantId, request.user.tenantId),
+            isNull(documents.deletedAt),
+          ),
+        )
+        .returning();
+
+      if (!updated) {
+        return reply.code(404).send({
+          error: "DOCUMENT_NOT_FOUND",
+          message: "The document was not found in this tenant.",
+        });
+      }
+
+      const [latestVersion] = await db
+        .select({
+          versionNumber: documentVersions.versionNumber,
+        })
+        .from(documentVersions)
+        .where(
+          and(
+            eq(documentVersions.documentId, documentId),
+            eq(documentVersions.tenantId, request.user.tenantId),
+          ),
+        )
+        .orderBy(desc(documentVersions.versionNumber))
+        .limit(1);
+
+      await db.insert(auditLogs).values({
+        tenantId: request.user.tenantId,
+        userId: request.user.sub,
+        eventType: "document.critical_master_marked",
+        resourceType: "DOCUMENT",
+        resourceId: updated.id,
+        ipAddress: request.ip,
+        userAgent: normalizeUserAgent(request.headers["user-agent"]),
+        metadata: {
+          isCriticalMaster: input.isCriticalMaster,
+        },
+      });
+
+      return {
+        message: input.isCriticalMaster
+          ? "Document marked as a critical master record."
+          : "Document removed from the critical master set.",
+        document: {
+          ...updated,
+          derivedStatus:
+            updated.status === "ARCHIVED"
+              ? "ARCHIVED"
+              : deriveDocumentStatusFromExpiry(updated.expiryDate),
+          daysRemaining: getDaysRemaining(updated.expiryDate),
+          latestVersionNumber: latestVersion?.versionNumber ?? 0,
+        },
+      };
+    },
+  );
 };

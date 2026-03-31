@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
+import multipart from "@fastify/multipart";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 
@@ -44,6 +45,14 @@ export async function createApp() {
   });
 
   await app.register(jwt, jwtRuntime);
+
+  await app.register(multipart, {
+    limits: {
+      files: 1,
+      fileSize: 25 * 1024 * 1024,
+      parts: 32,
+    },
+  });
 
   await app.register(swagger, {
     openapi: {

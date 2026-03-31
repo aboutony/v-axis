@@ -8,9 +8,9 @@ const currentDir = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(currentDir, "../../../.env") });
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default(
-    "development",
-  ),
+  NODE_ENV: z
+    .enum(["development", "test", "production"])
+    .default("development"),
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
@@ -19,6 +19,8 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16).default("vaxis-jwt-secret-dev"),
   JWT_PRIVATE_KEY: z.string().optional(),
   JWT_PUBLIC_KEY: z.string().optional(),
+  MFA_ENCRYPTION_SECRET: z.string().min(16).default("vaxis-mfa-secret-dev"),
+  VAULT_STORAGE_ROOT: z.string().default(".data/vault"),
 });
 
 function normalizeMultilineSecret(value?: string): string | undefined {

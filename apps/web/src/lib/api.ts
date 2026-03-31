@@ -1,6 +1,24 @@
 const API_BASE_URL =
   import.meta.env.VITE_API_URL?.replace(/\/$/, "") ?? "http://localhost:4000";
 
+type ApiPayload = {
+  error?: string;
+  message?: string;
+  [key: string]: unknown;
+};
+
+export class ApiError extends Error {
+  code: string | undefined;
+  payload: ApiPayload;
+
+  constructor(message: string, code?: string, payload: ApiPayload = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+    this.payload = payload;
+  }
+}
+
 export type PlatformBootstrapResponse = {
   platform: {
     name: string;
@@ -54,6 +72,7 @@ export type LoginInput = {
   tenantSlug: string;
   email: string;
   password: string;
+  mfaCode?: string;
 };
 
 export type AuthSession = {
@@ -71,12 +90,29 @@ export type AuthSession = {
     preferredTheme: string;
     mfaRequired: boolean;
     mfaEnabled: boolean;
+    timezone: string;
   };
   tenant: {
     id: string;
     clientName: string;
     slug: string;
   };
+};
+
+export type MfaEnrollmentResponse = {
+  message: string;
+  enrollment: {
+    method: "TOTP";
+    qrDataUrl: string;
+    manualEntryKey: string;
+    backupCodes: string[];
+  };
+};
+
+export type MfaVerificationResponse = {
+  message: string;
+  user: AuthSession["user"];
+  backupCodesRemaining: number;
 };
 
 export type TaxonomyResponse = {
@@ -161,6 +197,22 @@ export type DocumentsResponse = {
     documentTypeLabel: string;
     sector: string;
     entityName: string;
+    latestVersionNumber: number;
+  }>;
+};
+
+export type DocumentVersionsResponse = {
+  versions: Array<{
+    id: string;
+    tenantId: string;
+    documentId: string;
+    versionNumber: number;
+    filePath: string;
+    fileMimeType: string | null;
+    fileSizeBytes: number | null;
+    checksumSha256: string | null;
+    uploadedBy: string;
+    createdAt: string;
   }>;
 };
 
@@ -304,15 +356,36 @@ export type RegisterDocumentInput = {
   issueDate?: string | null;
   expiryDate?: string | null;
   notes?: string | null;
-  filePath?: string | null;
-  fileMimeType?: string | null;
-  fileSizeBytes?: number | null;
-  checksumSha256?: string | null;
   isCriticalMaster?: boolean;
 };
 
+export type ReplaceDocumentVersionInput = {
+  title?: string | null;
+  issueDate?: string | null;
+  expiryDate?: string | null;
+  notes?: string | null;
+};
+
+type DocumentMutationResponse = {
+  message: string;
+  document: DocumentsResponse["documents"][number];
+  riskSnapshot: {
+    score: number;
+    gapCount: number;
+    alerts: Array<{
+      kind: string;
+      severity: string;
+      title: string;
+      reason: string;
+    }>;
+  };
+};
+
 async function parseJson<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as { message?: string };
+  const contentType = response.headers.get("content-type") ?? "";
+  const payload = contentType.includes("application/json")
+    ? ((await response.json()) as ApiPayload)
+    : {};
 
   if (!response.ok) {
     const message =
@@ -320,7 +393,11 @@ async function parseJson<T>(response: Response): Promise<T> {
         ? payload.message
         : "The request could not be completed.";
 
-    throw new Error(message);
+    throw new ApiError(
+      message,
+      typeof payload.error === "string" ? payload.error : undefined,
+      payload,
+    );
   }
 
   return payload as T;
@@ -338,6 +415,24 @@ function buildHeaders(accessToken?: string, includeJson = false) {
   }
 
   return headers;
+}
+
+function appendDocumentFields(
+  formData: FormData,
+  input: RegisterDocumentInput | ReplaceDocumentVersionInput,
+) {
+  for (const [key, value] of Object.entries(input)) {
+    if (value === undefined || value === null || value === "") {
+      continue;
+    }
+
+    formData.append(
+      key,
+      typeof value === "boolean" || typeof value === "number"
+        ? String(value)
+        : value,
+    );
+  }
 }
 
 export async function fetchPlatformBootstrap() {
@@ -364,10 +459,34 @@ export async function login(input: LoginInput) {
     method: "POST",
     headers: buildHeaders(undefined, true),
     credentials: "include",
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      ...input,
+      mfaCode: input.mfaCode?.trim() ? input.mfaCode.trim() : undefined,
+    }),
   });
 
   return parseJson<AuthSession>(response);
+}
+
+export async function beginMfaEnrollment(accessToken: string) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/mfa/totp/enroll`, {
+    method: "POST",
+    headers: buildHeaders(accessToken),
+    credentials: "include",
+  });
+
+  return parseJson<MfaEnrollmentResponse>(response);
+}
+
+export async function verifyTotpEnrollment(accessToken: string, code: string) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/mfa/totp/verify`, {
+    method: "POST",
+    headers: buildHeaders(accessToken, true),
+    credentials: "include",
+    body: JSON.stringify({ code }),
+  });
+
+  return parseJson<MfaVerificationResponse>(response);
 }
 
 export async function fetchTaxonomy(accessToken: string) {
@@ -384,12 +503,15 @@ export async function updateCategory(
   categoryId: string,
   input: UpdateCategoryInput,
 ) {
-  const response = await fetch(`${API_BASE_URL}/api/v1/categories/${categoryId}`, {
-    method: "PATCH",
-    headers: buildHeaders(accessToken, true),
-    credentials: "include",
-    body: JSON.stringify(input),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/categories/${categoryId}`,
+    {
+      method: "PATCH",
+      headers: buildHeaders(accessToken, true),
+      credentials: "include",
+      body: JSON.stringify(input),
+    },
+  );
 
   return parseJson<{
     message: string;
@@ -397,7 +519,10 @@ export async function updateCategory(
   }>(response);
 }
 
-export async function createEntity(accessToken: string, input: CreateEntityInput) {
+export async function createEntity(
+  accessToken: string,
+  input: CreateEntityInput,
+) {
   const response = await fetch(`${API_BASE_URL}/api/v1/entities`, {
     method: "POST",
     headers: buildHeaders(accessToken, true),
@@ -430,6 +555,21 @@ export async function fetchDocuments(accessToken: string, entityId?: string) {
   return parseJson<DocumentsResponse>(response);
 }
 
+export async function fetchDocumentVersions(
+  accessToken: string,
+  documentId: string,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/documents/${documentId}/versions`,
+    {
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<DocumentVersionsResponse>(response);
+}
+
 export async function registerDocument(
   accessToken: string,
   input: RegisterDocumentInput,
@@ -441,19 +581,73 @@ export async function registerDocument(
     body: JSON.stringify(input),
   });
 
+  return parseJson<DocumentMutationResponse>(response);
+}
+
+export async function uploadDocument(
+  accessToken: string,
+  input: RegisterDocumentInput,
+  file: File,
+) {
+  const formData = new FormData();
+  appendDocumentFields(formData, input);
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/documents/upload`, {
+    method: "POST",
+    headers: buildHeaders(accessToken),
+    credentials: "include",
+    body: formData,
+  });
+
+  return parseJson<DocumentMutationResponse>(response);
+}
+
+export async function replaceDocumentFile(
+  accessToken: string,
+  documentId: string,
+  input: ReplaceDocumentVersionInput,
+  file: File,
+) {
+  const formData = new FormData();
+  appendDocumentFields(formData, input);
+  formData.append("file", file);
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/documents/${documentId}/versions`,
+    {
+      method: "POST",
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+      body: formData,
+    },
+  );
+
+  return parseJson<
+    DocumentMutationResponse & {
+      versionNumber: number;
+    }
+  >(response);
+}
+
+export async function toggleCriticalMaster(
+  accessToken: string,
+  documentId: string,
+  isCriticalMaster: boolean,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/documents/${documentId}/critical-master`,
+    {
+      method: "PATCH",
+      headers: buildHeaders(accessToken, true),
+      credentials: "include",
+      body: JSON.stringify({ isCriticalMaster }),
+    },
+  );
+
   return parseJson<{
     message: string;
     document: DocumentsResponse["documents"][number];
-    riskSnapshot: {
-      score: number;
-      gapCount: number;
-      alerts: Array<{
-        kind: string;
-        severity: string;
-        title: string;
-        reason: string;
-      }>;
-    };
   }>(response);
 }
 
@@ -518,7 +712,10 @@ export async function fetchNotifications(accessToken: string) {
   return parseJson<NotificationsResponse>(response);
 }
 
-export async function acknowledgeNotification(accessToken: string, notificationId: string) {
+export async function acknowledgeNotification(
+  accessToken: string,
+  notificationId: string,
+) {
   const response = await fetch(
     `${API_BASE_URL}/api/v1/notifications/${notificationId}/acknowledge`,
     {
@@ -534,7 +731,10 @@ export async function acknowledgeNotification(accessToken: string, notificationI
   }>(response);
 }
 
-export async function resolveNotification(accessToken: string, notificationId: string) {
+export async function resolveNotification(
+  accessToken: string,
+  notificationId: string,
+) {
   const response = await fetch(
     `${API_BASE_URL}/api/v1/notifications/${notificationId}/resolve`,
     {

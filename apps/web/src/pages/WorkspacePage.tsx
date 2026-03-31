@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   acknowledgeNotification,
-  createRule,
+  ApiError,
+  beginMfaEnrollment,
   createEntity,
+  createRule,
   deleteRule,
   fetchDashboardSummary,
   fetchDocuments,
@@ -15,10 +17,15 @@ import {
   login,
   refreshGovernance,
   registerDocument,
+  replaceDocumentFile,
   resolveNotification,
+  toggleCriticalMaster,
   updateCategory,
+  uploadDocument,
+  verifyTotpEnrollment,
   type AuthSession,
   type CreateEntityInput,
+  type MfaEnrollmentResponse,
   type RegisterDocumentInput,
   type RuleInput,
 } from "../lib/api";
@@ -30,13 +37,29 @@ type WorkspacePageProps = {
   session: AuthSession | null;
 };
 
-export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) {
+export function WorkspacePage({
+  onSessionChange,
+  session,
+}: WorkspacePageProps) {
   const queryClient = useQueryClient();
   const [loginForm, setLoginForm] = useState({
     tenantSlug: session?.tenant.slug ?? "zedan-group",
     email: session?.user.email ?? "admin@zedan.example",
     password: "ChangeThisNow!2026",
+    mfaCode: "",
   });
+  const [loginRequiresMfa, setLoginRequiresMfa] = useState(false);
+  const [documentUploadFile, setDocumentUploadFile] = useState<File | null>(
+    null,
+  );
+  const [documentFileInputKey, setDocumentFileInputKey] = useState(0);
+  const [replacementFiles, setReplacementFiles] = useState<
+    Record<string, File | null>
+  >({});
+  const [mfaEnrollment, setMfaEnrollment] = useState<
+    MfaEnrollmentResponse["enrollment"] | null
+  >(null);
+  const [mfaVerificationCode, setMfaVerificationCode] = useState("");
 
   const [entityForm, setEntityForm] = useState<CreateEntityInput>({
     categoryId: "",
@@ -66,6 +89,9 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
   });
 
   const accessToken = session?.accessToken;
+  const mfaSetupRequired = Boolean(
+    session?.user.mfaRequired && !session.user.mfaEnabled,
+  );
 
   const taxonomyQuery = useQuery({
     queryKey: ["workspace-taxonomy", accessToken],
@@ -149,7 +175,10 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
   }, [allEntities, documentForm.entityId]);
 
   useEffect(() => {
-    if (!documentForm.documentTypeId && documentTypesQuery.data?.documentTypes[0]) {
+    if (
+      !documentForm.documentTypeId &&
+      documentTypesQuery.data?.documentTypes[0]
+    ) {
       setDocumentForm((current) => ({
         ...current,
         documentTypeId: documentTypesQuery.data?.documentTypes[0]?.id ?? "",
@@ -166,11 +195,44 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
     }
   }, [documentTypesQuery.data?.documentTypes, ruleForm.documentTypeId]);
 
+  function persistSession(nextSession: AuthSession | null) {
+    if (nextSession) {
+      localStorage.setItem(sessionStorageKey, JSON.stringify(nextSession));
+    } else {
+      localStorage.removeItem(sessionStorageKey);
+    }
+
+    onSessionChange(nextSession);
+  }
+
+  function updateSessionUser(nextUser: AuthSession["user"]) {
+    if (!session) {
+      return;
+    }
+
+    persistSession({
+      ...session,
+      user: nextUser,
+    });
+  }
+
   const loginMutation = useMutation({
     mutationFn: login,
     onSuccess: (nextSession) => {
-      localStorage.setItem(sessionStorageKey, JSON.stringify(nextSession));
-      onSessionChange(nextSession);
+      persistSession(nextSession);
+      setLoginRequiresMfa(false);
+      setLoginForm((current) => ({
+        ...current,
+        mfaCode: "",
+      }));
+    },
+    onError: (error) => {
+      if (
+        error instanceof ApiError &&
+        (error.code === "MFA_REQUIRED" || error.code === "MFA_INVALID")
+      ) {
+        setLoginRequiresMfa(true);
+      }
     },
   });
 
@@ -225,9 +287,31 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
     },
   });
 
+  const mfaEnrollmentMutation = useMutation({
+    mutationFn: () => beginMfaEnrollment(accessToken!),
+    onSuccess: (response) => {
+      setMfaEnrollment(response.enrollment);
+      setMfaVerificationCode("");
+    },
+  });
+
+  const mfaVerificationMutation = useMutation({
+    mutationFn: (code: string) => verifyTotpEnrollment(accessToken!, code),
+    onSuccess: (response) => {
+      updateSessionUser(response.user);
+      setMfaVerificationCode("");
+      setMfaEnrollment(null);
+    },
+  });
+
   const documentMutation = useMutation({
-    mutationFn: (input: RegisterDocumentInput) =>
-      registerDocument(accessToken!, input),
+    mutationFn: (input: {
+      metadata: RegisterDocumentInput;
+      file: File | null;
+    }) =>
+      input.file
+        ? uploadDocument(accessToken!, input.metadata, input.file)
+        : registerDocument(accessToken!, input.metadata),
     onSuccess: async () => {
       await refreshWorkspace();
       setDocumentForm((current) => ({
@@ -236,9 +320,36 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
         issueDate: "",
         expiryDate: "",
         crNumber: "",
+        chamberNumber: "",
+        companyIdentifier: "",
         notes: "",
+        isCriticalMaster: false,
+      }));
+      setDocumentUploadFile(null);
+      setDocumentFileInputKey((current) => current + 1);
+    },
+  });
+
+  const replaceDocumentMutation = useMutation({
+    mutationFn: (input: { documentId: string; file: File }) =>
+      replaceDocumentFile(accessToken!, input.documentId, {}, input.file),
+    onSuccess: async (_data, variables) => {
+      await refreshWorkspace();
+      setReplacementFiles((current) => ({
+        ...current,
+        [variables.documentId]: null,
       }));
     },
+  });
+
+  const criticalMasterMutation = useMutation({
+    mutationFn: (input: { documentId: string; isCriticalMaster: boolean }) =>
+      toggleCriticalMaster(
+        accessToken!,
+        input.documentId,
+        input.isCriticalMaster,
+      ),
+    onSuccess: refreshWorkspace,
   });
 
   const ruleMutation = useMutation({
@@ -271,6 +382,13 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
   });
 
   if (!session) {
+    const loginError = loginMutation.error;
+    const showMfaField =
+      loginRequiresMfa ||
+      (loginError instanceof ApiError &&
+        (loginError.code === "MFA_REQUIRED" ||
+          loginError.code === "MFA_INVALID"));
+
     return (
       <div className="page-grid">
         <section className="card auth-card">
@@ -329,6 +447,32 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
               />
             </label>
 
+            {showMfaField ? (
+              <label>
+                Authenticator or backup code
+                <input
+                  onChange={(event) =>
+                    setLoginForm((current) => ({
+                      ...current,
+                      mfaCode: event.target.value,
+                    }))
+                  }
+                  placeholder="123456 or backup code"
+                  value={loginForm.mfaCode}
+                />
+              </label>
+            ) : null}
+
+            {showMfaField ? (
+              <div className="success-panel helper-panel">
+                <h4>MFA challenge active</h4>
+                <p>
+                  This account already has MFA enabled. Enter the six-digit
+                  authenticator code or one of the saved backup codes.
+                </p>
+              </div>
+            ) : null}
+
             <button
               className="primary-button"
               disabled={loginMutation.isPending}
@@ -338,7 +482,9 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
             </button>
 
             {loginMutation.error ? (
-              <p className="form-feedback error">{loginMutation.error.message}</p>
+              <p className="form-feedback error">
+                {loginMutation.error.message}
+              </p>
             ) : null}
           </form>
         </section>
@@ -361,8 +507,8 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
           <button
             className="theme-toggle"
             onClick={() => {
-              localStorage.removeItem(sessionStorageKey);
-              onSessionChange(null);
+              queryClient.clear();
+              persistSession(null);
             }}
             type="button"
           >
@@ -370,6 +516,106 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
           </button>
         </div>
       </section>
+
+      {mfaSetupRequired ? (
+        <section className="card workspace-header-card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Identity Hardening</p>
+              <h3>Complete MFA enrollment for this operator</h3>
+            </div>
+          </div>
+
+          <div className="mfa-panel">
+            <div className="mfa-copy">
+              <p className="hero-body">
+                This account is marked as MFA-required. Generate a TOTP setup,
+                scan it into Google Authenticator, Microsoft Authenticator, or
+                1Password, then verify the first code to lock in the tenant
+                admin baseline.
+              </p>
+
+              <button
+                className="primary-button"
+                disabled={mfaEnrollmentMutation.isPending}
+                onClick={() => mfaEnrollmentMutation.mutate()}
+                type="button"
+              >
+                {mfaEnrollmentMutation.isPending
+                  ? "Generating MFA setup..."
+                  : mfaEnrollment
+                    ? "Regenerate MFA setup"
+                    : "Generate MFA setup"}
+              </button>
+            </div>
+
+            {mfaEnrollment ? (
+              <div className="mfa-setup-grid">
+                <div className="mfa-qr-card">
+                  <img
+                    alt="Authenticator QR code for TOTP enrollment"
+                    className="mfa-qr"
+                    src={mfaEnrollment.qrDataUrl}
+                  />
+                </div>
+
+                <div className="mfa-details">
+                  <div className="success-panel helper-panel">
+                    <h4>Manual entry key</h4>
+                    <p className="mono-line">{mfaEnrollment.manualEntryKey}</p>
+                  </div>
+
+                  <div className="success-panel helper-panel">
+                    <h4>Backup codes</h4>
+                    <div className="backup-code-grid">
+                      {mfaEnrollment.backupCodes.map((code) => (
+                        <span className="code-chip" key={code}>
+                          {code}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <form
+                    className="launch-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      mfaVerificationMutation.mutate(mfaVerificationCode);
+                    }}
+                  >
+                    <label>
+                      Verify current authenticator code
+                      <input
+                        onChange={(event) =>
+                          setMfaVerificationCode(event.target.value)
+                        }
+                        placeholder="123456"
+                        value={mfaVerificationCode}
+                      />
+                    </label>
+
+                    <button
+                      className="secondary-button"
+                      disabled={mfaVerificationMutation.isPending}
+                      type="submit"
+                    >
+                      {mfaVerificationMutation.isPending
+                        ? "Verifying..."
+                        : "Enable MFA"}
+                    </button>
+
+                    {mfaVerificationMutation.error ? (
+                      <p className="form-feedback error">
+                        {mfaVerificationMutation.error.message}
+                      </p>
+                    ) : null}
+                  </form>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       <section className="card">
         <div className="card-header">
@@ -386,16 +632,15 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
           />
           <MetricBox
             label="Critical alerts"
-            value={String(dashboardQuery.data?.notificationSummary.critical ?? 0)}
+            value={String(
+              dashboardQuery.data?.notificationSummary.critical ?? 0,
+            )}
           />
           <MetricBox
             label="Open tasks"
             value={String(dashboardQuery.data?.notificationSummary.open ?? 0)}
           />
-          <MetricBox
-            label="Entities"
-            value={String(allEntities.length)}
-          />
+          <MetricBox label="Entities" value={String(allEntities.length)} />
         </div>
 
         <div className="workspace-actions">
@@ -439,7 +684,9 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
                 <span className="code-chip">
                   Slot {String(category.slotNumber).padStart(2, "0")}
                 </span>
-                <span className="meta-pill">{category.entities.length} entities</span>
+                <span className="meta-pill">
+                  {category.entities.length} entities
+                </span>
               </div>
 
               <label>
@@ -606,7 +853,8 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
               onChange={(event) =>
                 setEntityForm((current) => ({
                   ...current,
-                  entityType: event.target.value as CreateEntityInput["entityType"],
+                  entityType: event.target
+                    .value as CreateEntityInput["entityType"],
                 }))
               }
               value={entityForm.entityType}
@@ -653,7 +901,9 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
           </button>
 
           {entityMutation.error ? (
-            <p className="form-feedback error">{entityMutation.error.message}</p>
+            <p className="form-feedback error">
+              {entityMutation.error.message}
+            </p>
           ) : null}
         </form>
       </section>
@@ -705,11 +955,13 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
               }
               value={ruleForm.documentTypeId}
             >
-              {(documentTypesQuery.data?.documentTypes ?? []).map((documentType) => (
-                <option key={documentType.id} value={documentType.id}>
-                  #{documentType.code} {documentType.label}
-                </option>
-              ))}
+              {(documentTypesQuery.data?.documentTypes ?? []).map(
+                (documentType) => (
+                  <option key={documentType.id} value={documentType.id}>
+                    #{documentType.code} {documentType.label}
+                  </option>
+                ),
+              )}
             </select>
           </label>
 
@@ -741,7 +993,11 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
             Mandatory rule
           </label>
 
-          <button className="primary-button" disabled={ruleMutation.isPending} type="submit">
+          <button
+            className="primary-button"
+            disabled={ruleMutation.isPending}
+            type="submit"
+          >
             {ruleMutation.isPending ? "Creating rule..." : "Create rule"}
           </button>
 
@@ -774,7 +1030,7 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
         <div className="card-header">
           <div>
             <p className="eyebrow">Document Intake</p>
-            <h3>Register compliance records with DNA-code generation</h3>
+            <h3>Register metadata now and store files directly in the vault</h3>
           </div>
         </div>
 
@@ -782,7 +1038,10 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
           className="launch-form"
           onSubmit={(event) => {
             event.preventDefault();
-            documentMutation.mutate(documentForm);
+            documentMutation.mutate({
+              metadata: documentForm,
+              file: documentUploadFile,
+            });
           }}
         >
           <label>
@@ -815,11 +1074,13 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
               }
               value={documentForm.documentTypeId}
             >
-              {(documentTypesQuery.data?.documentTypes ?? []).map((documentType) => (
-                <option key={documentType.id} value={documentType.id}>
-                  #{documentType.code} {documentType.label}
-                </option>
-              ))}
+              {(documentTypesQuery.data?.documentTypes ?? []).map(
+                (documentType) => (
+                  <option key={documentType.id} value={documentType.id}>
+                    #{documentType.code} {documentType.label}
+                  </option>
+                ),
+              )}
             </select>
           </label>
 
@@ -878,18 +1139,26 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
           </label>
 
           <label>
-            File path
+            Upload file
             <input
+              key={documentFileInputKey}
               onChange={(event) =>
-                setDocumentForm((current) => ({
-                  ...current,
-                  filePath: event.target.value,
-                }))
+                setDocumentUploadFile(event.target.files?.[0] ?? null)
               }
-              placeholder="vault/tenant/entity/file.pdf"
-              value={documentForm.filePath ?? ""}
+              type="file"
             />
           </label>
+
+          {documentUploadFile ? (
+            <p className="helper-copy">
+              Selected file: {documentUploadFile.name}
+            </p>
+          ) : (
+            <p className="helper-copy">
+              Leave the file empty to register the record first and upload
+              later.
+            </p>
+          )}
 
           <label>
             Notes
@@ -904,42 +1173,73 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
             />
           </label>
 
+          <label className="checkbox-row">
+            <input
+              checked={Boolean(documentForm.isCriticalMaster)}
+              onChange={(event) =>
+                setDocumentForm((current) => ({
+                  ...current,
+                  isCriticalMaster: event.target.checked,
+                }))
+              }
+              type="checkbox"
+            />
+            Mark as critical master
+          </label>
+
           <button
             className="primary-button"
             disabled={documentMutation.isPending}
             type="submit"
           >
-            {documentMutation.isPending ? "Registering..." : "Register document"}
+            {documentMutation.isPending
+              ? "Processing intake..."
+              : documentUploadFile
+                ? "Upload document to vault"
+                : "Register metadata-only document"}
           </button>
 
           {documentMutation.data ? (
             <div className="success-panel">
               <h4>{documentMutation.data.message}</h4>
               <p>
-                {documentMutation.data.document.dnaCode} created with updated risk
-                score {documentMutation.data.riskSnapshot.score}.
+                {documentMutation.data.document.dnaCode} created with updated
+                risk score {documentMutation.data.riskSnapshot.score}.
               </p>
             </div>
           ) : null}
 
           {documentMutation.error ? (
-            <p className="form-feedback error">{documentMutation.error.message}</p>
+            <p className="form-feedback error">
+              {documentMutation.error.message}
+            </p>
           ) : null}
         </form>
       </section>
 
-      <section className="card">
+      <section className="card workspace-header-card">
         <div className="card-header">
           <div>
             <p className="eyebrow">Registered Documents</p>
-            <h3>Live record inventory</h3>
+            <h3>Live inventory with vault versioning controls</h3>
           </div>
         </div>
 
         <div className="workspace-table">
           {(documentsQuery.data?.documents ?? []).map((document) => (
-            <div className="workspace-row" key={document.id}>
-              <strong>{document.dnaCode}</strong>
+            <div
+              className="workspace-row workspace-row-document"
+              key={document.id}
+            >
+              <div>
+                <strong>{document.dnaCode}</strong>
+                <p className="helper-copy">
+                  {document.documentTypeLabel} •{" "}
+                  {document.isCriticalMaster
+                    ? "Critical master"
+                    : "Standard record"}
+                </p>
+              </div>
               <span>{document.title}</span>
               <span>{document.entityName}</span>
               <span>{document.derivedStatus}</span>
@@ -948,9 +1248,80 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
                   ? "No expiry"
                   : `${document.daysRemaining} days`}
               </span>
+              <span>
+                {document.filePath
+                  ? `Vault v${document.latestVersionNumber}`
+                  : "Metadata only"}
+              </span>
+              <div className="workspace-row-actions workspace-row-actions-wrap">
+                <label className="inline-file-field">
+                  <span>
+                    {replacementFiles[document.id]?.name ??
+                      "Choose replacement"}
+                  </span>
+                  <input
+                    onChange={(event) =>
+                      setReplacementFiles((current) => ({
+                        ...current,
+                        [document.id]: event.target.files?.[0] ?? null,
+                      }))
+                    }
+                    type="file"
+                  />
+                </label>
+                <button
+                  className="secondary-button"
+                  disabled={
+                    replaceDocumentMutation.isPending ||
+                    !replacementFiles[document.id]
+                  }
+                  onClick={() => {
+                    const nextFile = replacementFiles[document.id];
+
+                    if (!nextFile) {
+                      return;
+                    }
+
+                    replaceDocumentMutation.mutate({
+                      documentId: document.id,
+                      file: nextFile,
+                    });
+                  }}
+                  type="button"
+                >
+                  Upload version
+                </button>
+                <button
+                  className="secondary-button"
+                  disabled={criticalMasterMutation.isPending}
+                  onClick={() =>
+                    criticalMasterMutation.mutate({
+                      documentId: document.id,
+                      isCriticalMaster: !document.isCriticalMaster,
+                    })
+                  }
+                  type="button"
+                >
+                  {document.isCriticalMaster
+                    ? "Unset critical"
+                    : "Mark critical"}
+                </button>
+              </div>
             </div>
           ))}
         </div>
+
+        {replaceDocumentMutation.error ? (
+          <p className="form-feedback error">
+            {replaceDocumentMutation.error.message}
+          </p>
+        ) : null}
+
+        {criticalMasterMutation.error ? (
+          <p className="form-feedback error">
+            {criticalMasterMutation.error.message}
+          </p>
+        ) : null}
       </section>
 
       <section className="card">
@@ -962,32 +1333,37 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
         </div>
 
         <div className="workspace-table">
-          {(notificationsQuery.data?.notifications ?? []).map((notification) => (
-            <div className="workspace-row workspace-row-notification" key={notification.id}>
-              <strong>{notification.title}</strong>
-              <span>{notification.entityName}</span>
-              <span>{notification.severity}</span>
-              <span>{notification.status}</span>
-              <div className="workspace-row-actions">
-                <button
-                  className="secondary-button"
-                  disabled={acknowledgeMutation.isPending}
-                  onClick={() => acknowledgeMutation.mutate(notification.id)}
-                  type="button"
-                >
-                  Acknowledge
-                </button>
-                <button
-                  className="secondary-button"
-                  disabled={resolveMutation.isPending}
-                  onClick={() => resolveMutation.mutate(notification.id)}
-                  type="button"
-                >
-                  Resolve
-                </button>
+          {(notificationsQuery.data?.notifications ?? []).map(
+            (notification) => (
+              <div
+                className="workspace-row workspace-row-notification"
+                key={notification.id}
+              >
+                <strong>{notification.title}</strong>
+                <span>{notification.entityName}</span>
+                <span>{notification.severity}</span>
+                <span>{notification.status}</span>
+                <div className="workspace-row-actions">
+                  <button
+                    className="secondary-button"
+                    disabled={acknowledgeMutation.isPending}
+                    onClick={() => acknowledgeMutation.mutate(notification.id)}
+                    type="button"
+                  >
+                    Acknowledge
+                  </button>
+                  <button
+                    className="secondary-button"
+                    disabled={resolveMutation.isPending}
+                    onClick={() => resolveMutation.mutate(notification.id)}
+                    type="button"
+                  >
+                    Resolve
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            ),
+          )}
         </div>
       </section>
     </div>

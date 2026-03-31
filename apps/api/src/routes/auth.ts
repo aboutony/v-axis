@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from "fastify";
+import type {
+  FastifyInstance,
+  FastifyPluginAsync,
+  FastifyReply,
+} from "fastify";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 
@@ -8,6 +12,7 @@ import { db } from "@vaxis/db";
 import {
   auditLogs,
   categories,
+  mfaEnrollments,
   tenants,
   userSessions,
   users,
@@ -15,6 +20,7 @@ import {
 import {
   categorySlots,
   defaultPermissionsByRole,
+  platformName,
   seededDocumentTypes,
 } from "@vaxis/domain";
 
@@ -25,6 +31,13 @@ import {
   hashToken,
   verifyPassword,
 } from "../lib/auth";
+import {
+  createTotpEnrollment,
+  decryptSecret,
+  hashBackupCode,
+  verifyTotpCode,
+} from "../lib/mfa";
+import { ensureAuthenticated } from "../lib/permissions";
 import type { AuthTokenPayload } from "../types/auth";
 
 const bootstrapSchema = z.object({
@@ -33,7 +46,10 @@ const bootstrapSchema = z.object({
     .string()
     .min(2)
     .max(120)
-    .regex(/^[a-z0-9-]+$/, "Slug must use lowercase letters, numbers, and hyphens."),
+    .regex(
+      /^[a-z0-9-]+$/,
+      "Slug must use lowercase letters, numbers, and hyphens.",
+    ),
   adminFullName: z.string().min(2).max(200),
   adminEmail: z.string().email(),
   adminPassword: z.string().min(12).max(128),
@@ -43,6 +59,15 @@ const loginSchema = z.object({
   tenantSlug: z.string().min(2).max(120),
   email: z.string().email(),
   password: z.string().min(12).max(128),
+  mfaCode: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.string().trim().min(6).max(64).optional(),
+  ),
+});
+
+const mfaVerificationSchema = z.object({
+  code: z.string().trim().min(6).max(64),
 });
 
 function buildAuthPayload(input: {
@@ -58,6 +83,41 @@ function buildAuthPayload(input: {
     role: input.role,
     permissions: input.permissions,
     email: input.email,
+  };
+}
+
+function normalizeUserAgent(userAgent: string | string[] | undefined) {
+  return Array.isArray(userAgent) ? userAgent.join(" ") : userAgent;
+}
+
+function buildSessionUser(
+  user: Pick<
+    typeof users.$inferSelect,
+    | "id"
+    | "tenantId"
+    | "email"
+    | "fullName"
+    | "role"
+    | "permissions"
+    | "preferredLanguage"
+    | "preferredTheme"
+    | "mfaRequired"
+    | "mfaEnabled"
+    | "timezone"
+  >,
+) {
+  return {
+    id: user.id,
+    tenantId: user.tenantId,
+    email: user.email,
+    fullName: user.fullName,
+    role: user.role,
+    permissions: user.permissions,
+    preferredLanguage: user.preferredLanguage,
+    preferredTheme: user.preferredTheme,
+    mfaRequired: user.mfaRequired,
+    mfaEnabled: user.mfaEnabled,
+    timezone: user.timezone,
   };
 }
 
@@ -107,6 +167,103 @@ async function issueSession(input: {
   return {
     accessToken,
     refreshTokenExpiresAt: refreshTokenExpiresAt.toISOString(),
+  };
+}
+
+async function recordLoginFailure(input: {
+  tenantId?: string | null;
+  userId?: string | null;
+  email: string;
+  tenantSlug: string;
+  reason: string;
+  ipAddress: string | undefined;
+  userAgent: string | undefined;
+}) {
+  await db.insert(auditLogs).values({
+    tenantId: input.tenantId ?? null,
+    userId: input.userId ?? null,
+    eventType: "user.login.failed",
+    resourceType: "USER",
+    resourceId: input.userId ?? null,
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent,
+    metadata: {
+      email: input.email,
+      reason: input.reason,
+      tenantSlug: input.tenantSlug,
+    },
+  });
+}
+
+async function validateMfaChallenge(input: {
+  userId: string;
+  code: string | undefined;
+}) {
+  const [enrollment] = await db
+    .select()
+    .from(mfaEnrollments)
+    .where(
+      and(
+        eq(mfaEnrollments.userId, input.userId),
+        eq(mfaEnrollments.method, "TOTP"),
+        eq(mfaEnrollments.isVerified, true),
+      ),
+    )
+    .orderBy(desc(mfaEnrollments.createdAt))
+    .limit(1);
+
+  if (!enrollment?.totpSecretEncrypted) {
+    return {
+      ok: false as const,
+      statusCode: 409,
+      code: "MFA_CONFIGURATION_MISSING",
+      message:
+        "This account requires MFA, but no verified authenticator enrollment is available.",
+    };
+  }
+
+  if (!input.code) {
+    return {
+      ok: false as const,
+      statusCode: 401,
+      code: "MFA_REQUIRED",
+      message: "Enter the authenticator or backup code for this account.",
+    };
+  }
+
+  const normalizedCode = input.code.trim();
+  const secret = decryptSecret(enrollment.totpSecretEncrypted);
+
+  if (verifyTotpCode({ secret, code: normalizedCode })) {
+    return {
+      ok: true as const,
+      method: "TOTP" as const,
+    };
+  }
+
+  const backupHash = hashBackupCode(normalizedCode);
+  const backupCodes = enrollment.backupCodesHash ?? [];
+
+  if (backupCodes.includes(backupHash)) {
+    await db
+      .update(mfaEnrollments)
+      .set({
+        backupCodesHash: backupCodes.filter((hash) => hash !== backupHash),
+      })
+      .where(eq(mfaEnrollments.id, enrollment.id));
+
+    return {
+      ok: true as const,
+      method: "BACKUP_CODE" as const,
+      backupCodesRemaining: backupCodes.length - 1,
+    };
+  }
+
+  return {
+    ok: false as const,
+    statusCode: 401,
+    code: "MFA_INVALID",
+    message: "Authenticator or backup code was not valid.",
   };
 }
 
@@ -186,7 +343,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         resourceType: "TENANT",
         resourceId: tenant.id,
         ipAddress: request.ip,
-        userAgent: request.headers["user-agent"],
+        userAgent: normalizeUserAgent(request.headers["user-agent"]),
         metadata: {
           source: "bootstrap-client-endpoint",
           seededCategorySlots: categorySlots.length,
@@ -220,6 +377,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post("/api/v1/auth/login", async (request, reply) => {
     const input = loginSchema.parse(request.body);
+    const userAgent = normalizeUserAgent(request.headers["user-agent"]);
 
     const [tenant] = await db
       .select({
@@ -232,6 +390,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       .limit(1);
 
     if (!tenant) {
+      await recordLoginFailure({
+        email: input.email,
+        tenantSlug: input.tenantSlug,
+        reason: "tenant_not_found",
+        ipAddress: request.ip,
+        userAgent,
+      });
+
       return reply.code(401).send({
         error: "INVALID_CREDENTIALS",
         message: "Invalid tenant or credentials.",
@@ -252,6 +418,15 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       .limit(1);
 
     if (!user?.passwordHash) {
+      await recordLoginFailure({
+        tenantId: tenant.id,
+        email: input.email,
+        tenantSlug: input.tenantSlug,
+        reason: "user_not_found",
+        ipAddress: request.ip,
+        userAgent,
+      });
+
       return reply.code(401).send({
         error: "INVALID_CREDENTIALS",
         message: "Invalid tenant or credentials.",
@@ -264,10 +439,48 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     );
 
     if (!passwordMatches) {
+      await recordLoginFailure({
+        tenantId: user.tenantId,
+        userId: user.id,
+        email: input.email,
+        tenantSlug: input.tenantSlug,
+        reason: "password_mismatch",
+        ipAddress: request.ip,
+        userAgent,
+      });
+
       return reply.code(401).send({
         error: "INVALID_CREDENTIALS",
         message: "Invalid tenant or credentials.",
       });
+    }
+
+    let mfaMethod: "TOTP" | "BACKUP_CODE" | "NOT_ENABLED" = "NOT_ENABLED";
+
+    if (user.mfaEnabled) {
+      const mfaResult = await validateMfaChallenge({
+        userId: user.id,
+        code: input.mfaCode,
+      });
+
+      if (!mfaResult.ok) {
+        await recordLoginFailure({
+          tenantId: user.tenantId,
+          userId: user.id,
+          email: input.email,
+          tenantSlug: input.tenantSlug,
+          reason: mfaResult.code,
+          ipAddress: request.ip,
+          userAgent,
+        });
+
+        return reply.code(mfaResult.statusCode).send({
+          error: mfaResult.code,
+          message: mfaResult.message,
+        });
+      }
+
+      mfaMethod = mfaResult.method;
     }
 
     await db
@@ -285,8 +498,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       resourceType: "USER",
       resourceId: user.id,
       ipAddress: request.ip,
-      userAgent: request.headers["user-agent"],
+      userAgent,
       metadata: {
+        mfaMethod,
         sessionHint: randomUUID(),
       },
     });
@@ -300,25 +514,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       role: user.role,
       permissions: user.permissions,
       ipAddress: request.ip,
-      userAgent: request.headers["user-agent"],
+      userAgent,
     });
 
     return {
       message: "Login successful.",
       accessToken: session.accessToken,
       refreshTokenExpiresAt: session.refreshTokenExpiresAt,
-      user: {
-        id: user.id,
-        tenantId: user.tenantId,
-        email: user.email,
-        fullName: user.fullName,
-        role: user.role,
-        permissions: user.permissions,
-        preferredLanguage: user.preferredLanguage,
-        preferredTheme: user.preferredTheme,
-        mfaRequired: user.mfaRequired,
-        mfaEnabled: user.mfaEnabled,
-      },
+      user: buildSessionUser(user),
       tenant,
     };
   });
@@ -379,7 +582,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       role: user.role,
       permissions: user.permissions,
       ipAddress: request.ip,
-      userAgent: request.headers["user-agent"],
+      userAgent: normalizeUserAgent(request.headers["user-agent"]),
     });
 
     return {
@@ -408,14 +611,142 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     };
   });
 
-  fastify.get("/api/v1/auth/me", async (request, reply) => {
-    try {
-      await request.jwtVerify();
-    } catch {
-      return reply.code(401).send({
-        error: "UNAUTHORIZED",
-        message: "A valid access token is required.",
+  fastify.post("/api/v1/auth/mfa/totp/enroll", async (request, reply) => {
+    if (!(await ensureAuthenticated(request, reply))) {
+      return;
+    }
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.id, request.user.sub),
+          eq(users.tenantId, request.user.tenantId),
+          eq(users.status, "ACTIVE"),
+        ),
+      )
+      .limit(1);
+
+    if (!user) {
+      return reply.code(404).send({
+        error: "USER_NOT_FOUND",
+        message: "Authenticated user no longer exists.",
       });
+    }
+
+    const enrollment = await createTotpEnrollment({
+      email: user.email,
+      issuer: platformName,
+    });
+
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(mfaEnrollments)
+        .where(
+          and(
+            eq(mfaEnrollments.userId, user.id),
+            eq(mfaEnrollments.method, "TOTP"),
+          ),
+        );
+
+      await tx.insert(mfaEnrollments).values({
+        userId: user.id,
+        method: "TOTP",
+        totpSecretEncrypted: enrollment.encryptedSecret,
+        backupCodesHash: enrollment.hashedBackupCodes,
+        isVerified: false,
+      });
+    });
+
+    return {
+      message: "Authenticator enrollment generated.",
+      enrollment: {
+        method: "TOTP",
+        qrDataUrl: enrollment.qrDataUrl,
+        manualEntryKey: enrollment.secret,
+        backupCodes: enrollment.backupCodes,
+      },
+    };
+  });
+
+  fastify.post("/api/v1/auth/mfa/totp/verify", async (request, reply) => {
+    if (!(await ensureAuthenticated(request, reply))) {
+      return;
+    }
+
+    const input = mfaVerificationSchema.parse(request.body);
+
+    const [enrollment] = await db
+      .select()
+      .from(mfaEnrollments)
+      .where(
+        and(
+          eq(mfaEnrollments.userId, request.user.sub),
+          eq(mfaEnrollments.method, "TOTP"),
+        ),
+      )
+      .orderBy(desc(mfaEnrollments.createdAt))
+      .limit(1);
+
+    if (!enrollment?.totpSecretEncrypted) {
+      return reply.code(404).send({
+        error: "MFA_ENROLLMENT_NOT_FOUND",
+        message: "Start authenticator enrollment before verifying it.",
+      });
+    }
+
+    const isValid = verifyTotpCode({
+      secret: decryptSecret(enrollment.totpSecretEncrypted),
+      code: input.code,
+    });
+
+    if (!isValid) {
+      return reply.code(400).send({
+        error: "MFA_INVALID",
+        message: "The authenticator code could not be verified.",
+      });
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(mfaEnrollments)
+        .set({ isVerified: true })
+        .where(eq(mfaEnrollments.id, enrollment.id));
+
+      await tx
+        .update(users)
+        .set({
+          mfaEnabled: true,
+          mfaRequired: true,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, request.user.sub));
+    });
+
+    const [updatedUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, request.user.sub))
+      .limit(1);
+
+    if (!updatedUser) {
+      return reply.code(404).send({
+        error: "USER_NOT_FOUND",
+        message: "Authenticated user no longer exists.",
+      });
+    }
+
+    return {
+      message: "Authenticator MFA is now enabled.",
+      user: buildSessionUser(updatedUser),
+      backupCodesRemaining: enrollment.backupCodesHash.length,
+    };
+  });
+
+  fastify.get("/api/v1/auth/me", async (request, reply) => {
+    if (!(await ensureAuthenticated(request, reply))) {
+      return;
     }
 
     const [user] = await db
