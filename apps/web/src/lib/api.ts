@@ -28,6 +28,8 @@ export type PlatformBootstrapResponse = {
   platformState: {
     tenantCount: number;
     hasTenants: boolean;
+    databaseReady: boolean;
+    startupIssue: string | null;
   };
   security: {
     auth: string;

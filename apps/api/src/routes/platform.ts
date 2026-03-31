@@ -15,14 +15,31 @@ import {
 
 export const platformRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get("/api/v1/platform/bootstrap", async () => {
-    const [tenantSummary] = await db
-      .select({
-        count: sql<number>`count(*)::int`,
-      })
-      .from(tenants)
-      .where(isNull(tenants.deletedAt));
+    let tenantCount = 0;
+    let databaseReady = true;
+    let startupIssue: string | null = null;
 
-    const tenantCount = tenantSummary?.count ?? 0;
+    try {
+      const [tenantSummary] = await db
+        .select({
+          count: sql<number>`count(*)::int`,
+        })
+        .from(tenants)
+        .where(isNull(tenants.deletedAt));
+
+      tenantCount = tenantSummary?.count ?? 0;
+    } catch (error) {
+      databaseReady = false;
+      startupIssue =
+        "The production database schema has not been initialized yet.";
+
+      fastify.log.error(
+        {
+          error,
+        },
+        "Platform bootstrap could not inspect tenant state.",
+      );
+    }
 
     return {
       platform: {
@@ -33,6 +50,8 @@ export const platformRoutes: FastifyPluginAsync = async (fastify) => {
       platformState: {
         tenantCount,
         hasTenants: tenantCount > 0,
+        databaseReady,
+        startupIssue,
       },
       security: {
         auth: "JWT with refresh token rotation",

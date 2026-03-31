@@ -204,6 +204,32 @@ function HomeEntryPage({
     );
   }
 
+  if (!platformQuery.data?.platformState.databaseReady) {
+    return (
+      <div className="page-grid">
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Initialization Required</p>
+              <h3>The live platform is deployed, but its database is not initialized yet.</h3>
+            </div>
+          </div>
+          <p className="helper-copy">
+            {platformQuery.data?.platformState.startupIssue ??
+              "Finish the production database migration and seed before first use."}
+          </p>
+          <div className="success-panel">
+            <h4>What happens after that</h4>
+            <p>
+              V-AXIS will automatically open the real product flow: Launchpad if
+              no tenant exists yet, or Workspace login if a tenant already exists.
+            </p>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   if (session || platformQuery.data?.platformState.hasTenants) {
     return <Navigate replace to="/workspace" />;
   }
