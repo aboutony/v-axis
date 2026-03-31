@@ -2,17 +2,25 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  acknowledgeNotification,
+  createRule,
   createEntity,
+  deleteRule,
   fetchDashboardSummary,
   fetchDocuments,
   fetchDocumentTypes,
+  fetchNotifications,
+  fetchRules,
   fetchTaxonomy,
   login,
+  refreshGovernance,
   registerDocument,
+  resolveNotification,
   updateCategory,
   type AuthSession,
   type CreateEntityInput,
   type RegisterDocumentInput,
+  type RuleInput,
 } from "../lib/api";
 
 const sessionStorageKey = "vaxis.session";
@@ -50,6 +58,13 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
     isCriticalMaster: false,
   });
 
+  const [ruleForm, setRuleForm] = useState<RuleInput>({
+    entityType: "SUBSIDIARY",
+    documentTypeId: "",
+    isMandatory: true,
+    country: "",
+  });
+
   const accessToken = session?.accessToken;
 
   const taxonomyQuery = useQuery({
@@ -73,6 +88,18 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
   const dashboardQuery = useQuery({
     queryKey: ["workspace-dashboard", accessToken],
     queryFn: () => fetchDashboardSummary(accessToken!),
+    enabled: Boolean(accessToken),
+  });
+
+  const rulesQuery = useQuery({
+    queryKey: ["workspace-rules", accessToken],
+    queryFn: () => fetchRules(accessToken!),
+    enabled: Boolean(accessToken),
+  });
+
+  const notificationsQuery = useQuery({
+    queryKey: ["workspace-notifications", accessToken],
+    queryFn: () => fetchNotifications(accessToken!),
     enabled: Boolean(accessToken),
   });
 
@@ -130,6 +157,15 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
     }
   }, [documentTypesQuery.data?.documentTypes, documentForm.documentTypeId]);
 
+  useEffect(() => {
+    if (!ruleForm.documentTypeId && documentTypesQuery.data?.documentTypes[0]) {
+      setRuleForm((current) => ({
+        ...current,
+        documentTypeId: documentTypesQuery.data?.documentTypes[0]?.id ?? "",
+      }));
+    }
+  }, [documentTypesQuery.data?.documentTypes, ruleForm.documentTypeId]);
+
   const loginMutation = useMutation({
     mutationFn: login,
     onSuccess: (nextSession) => {
@@ -151,6 +187,12 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
       }),
       queryClient.invalidateQueries({
         queryKey: ["workspace-dashboard", accessToken],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["workspace-rules", accessToken],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["workspace-notifications", accessToken],
       }),
     ]);
   };
@@ -197,6 +239,35 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
         notes: "",
       }));
     },
+  });
+
+  const ruleMutation = useMutation({
+    mutationFn: (input: RuleInput) => createRule(accessToken!, input),
+    onSuccess: async () => {
+      await refreshWorkspace();
+    },
+  });
+
+  const deleteRuleMutation = useMutation({
+    mutationFn: (ruleId: string) => deleteRule(accessToken!, ruleId),
+    onSuccess: refreshWorkspace,
+  });
+
+  const refreshGovernanceMutation = useMutation({
+    mutationFn: () => refreshGovernance(accessToken!),
+    onSuccess: refreshWorkspace,
+  });
+
+  const acknowledgeMutation = useMutation({
+    mutationFn: (notificationId: string) =>
+      acknowledgeNotification(accessToken!, notificationId),
+    onSuccess: refreshWorkspace,
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: (notificationId: string) =>
+      resolveNotification(accessToken!, notificationId),
+    onSuccess: refreshWorkspace,
   });
 
   if (!session) {
@@ -315,16 +386,29 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
           />
           <MetricBox
             label="Critical alerts"
-            value={String(dashboardQuery.data?.criticalAlerts.length ?? 0)}
+            value={String(dashboardQuery.data?.notificationSummary.critical ?? 0)}
           />
           <MetricBox
-            label="Tracked documents"
-            value={String(documentsQuery.data?.documents.length ?? 0)}
+            label="Open tasks"
+            value={String(dashboardQuery.data?.notificationSummary.open ?? 0)}
           />
           <MetricBox
             label="Entities"
             value={String(allEntities.length)}
           />
+        </div>
+
+        <div className="workspace-actions">
+          <button
+            className="secondary-button"
+            disabled={refreshGovernanceMutation.isPending}
+            onClick={() => refreshGovernanceMutation.mutate()}
+            type="button"
+          >
+            {refreshGovernanceMutation.isPending
+              ? "Refreshing governance..."
+              : "Refresh governance state"}
+          </button>
         </div>
 
         <div className="workspace-table">
@@ -577,6 +661,118 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
       <section className="card">
         <div className="card-header">
           <div>
+            <p className="eyebrow">Document Rules</p>
+            <h3>Define what each entity type must maintain</h3>
+          </div>
+        </div>
+
+        <form
+          className="launch-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            ruleMutation.mutate({
+              ...ruleForm,
+              country: ruleForm.country?.trim() ? ruleForm.country : null,
+            });
+          }}
+        >
+          <label>
+            Entity type
+            <select
+              onChange={(event) =>
+                setRuleForm((current) => ({
+                  ...current,
+                  entityType: event.target.value as RuleInput["entityType"],
+                }))
+              }
+              value={ruleForm.entityType}
+            >
+              <option value="SUBSIDIARY">Subsidiary</option>
+              <option value="JV">JV</option>
+              <option value="ASSOCIATE">Associate</option>
+              <option value="BRANCH">Branch</option>
+            </select>
+          </label>
+
+          <label>
+            Document type
+            <select
+              onChange={(event) =>
+                setRuleForm((current) => ({
+                  ...current,
+                  documentTypeId: event.target.value,
+                }))
+              }
+              value={ruleForm.documentTypeId}
+            >
+              {(documentTypesQuery.data?.documentTypes ?? []).map((documentType) => (
+                <option key={documentType.id} value={documentType.id}>
+                  #{documentType.code} {documentType.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Country override
+            <input
+              onChange={(event) =>
+                setRuleForm((current) => ({
+                  ...current,
+                  country: event.target.value,
+                }))
+              }
+              placeholder="Leave blank for all countries"
+              value={ruleForm.country ?? ""}
+            />
+          </label>
+
+          <label className="checkbox-row">
+            <input
+              checked={ruleForm.isMandatory}
+              onChange={(event) =>
+                setRuleForm((current) => ({
+                  ...current,
+                  isMandatory: event.target.checked,
+                }))
+              }
+              type="checkbox"
+            />
+            Mandatory rule
+          </label>
+
+          <button className="primary-button" disabled={ruleMutation.isPending} type="submit">
+            {ruleMutation.isPending ? "Creating rule..." : "Create rule"}
+          </button>
+
+          {ruleMutation.error ? (
+            <p className="form-feedback error">{ruleMutation.error.message}</p>
+          ) : null}
+        </form>
+
+        <div className="workspace-table">
+          {(rulesQuery.data?.rules ?? []).map((rule) => (
+            <div className="workspace-row workspace-row-tight" key={rule.id}>
+              <strong>{rule.documentTypeLabel}</strong>
+              <span>{rule.entityType}</span>
+              <span>{rule.documentSector}</span>
+              <span>{rule.isMandatory ? "Mandatory" : "Optional"}</span>
+              <button
+                className="secondary-button"
+                disabled={deleteRuleMutation.isPending}
+                onClick={() => deleteRuleMutation.mutate(rule.id)}
+                type="button"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-header">
+          <div>
             <p className="eyebrow">Document Intake</p>
             <h3>Register compliance records with DNA-code generation</h3>
           </div>
@@ -752,6 +948,44 @@ export function WorkspacePage({ onSessionChange, session }: WorkspacePageProps) 
                   ? "No expiry"
                   : `${document.daysRemaining} days`}
               </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">Notification Queue</p>
+            <h3>Durable governance tasks</h3>
+          </div>
+        </div>
+
+        <div className="workspace-table">
+          {(notificationsQuery.data?.notifications ?? []).map((notification) => (
+            <div className="workspace-row workspace-row-notification" key={notification.id}>
+              <strong>{notification.title}</strong>
+              <span>{notification.entityName}</span>
+              <span>{notification.severity}</span>
+              <span>{notification.status}</span>
+              <div className="workspace-row-actions">
+                <button
+                  className="secondary-button"
+                  disabled={acknowledgeMutation.isPending}
+                  onClick={() => acknowledgeMutation.mutate(notification.id)}
+                  type="button"
+                >
+                  Acknowledge
+                </button>
+                <button
+                  className="secondary-button"
+                  disabled={resolveMutation.isPending}
+                  onClick={() => resolveMutation.mutate(notification.id)}
+                  type="button"
+                >
+                  Resolve
+                </button>
+              </div>
             </div>
           ))}
         </div>

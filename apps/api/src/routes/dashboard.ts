@@ -11,6 +11,7 @@ import {
   entities,
   entityDocumentRules,
   entityRiskScores,
+  notifications,
 } from "@vaxis/db/schema";
 import { getSeverityRank } from "@vaxis/domain";
 
@@ -210,6 +211,11 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
       .orderBy(desc(auditLogs.createdAt))
       .limit(20);
 
+    const notificationRows = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.tenantId, request.user.tenantId));
+
     return {
       portfolioHealthScore,
       categoryHealthCards,
@@ -217,6 +223,18 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
       expiryTimeline,
       documentGapSummary,
       recentActivity,
+      notificationSummary: {
+        open: notificationRows.filter(
+          (notification) =>
+            notification.status !== "RESOLVED" && notification.status !== "CLOSED",
+        ).length,
+        critical: notificationRows.filter(
+          (notification) =>
+            notification.severity === "CRITICAL" &&
+            notification.status !== "RESOLVED" &&
+            notification.status !== "CLOSED",
+        ).length,
+      },
       entities: snapshots
         .map((item) => ({
           id: item.entity.id,

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "@vaxis/db";
 import { auditLogs, categories, documents, entities, tenants } from "@vaxis/db/schema";
 
+import { refreshEntityGovernance } from "../lib/governance";
 import { ensureAuthenticated, ensurePermission } from "../lib/permissions";
 
 const publicParamsSchema = z.object({
@@ -292,6 +293,11 @@ export const taxonomyRoutes: FastifyPluginAsync = async (fastify) => {
         entityCode: entity.entityCode,
         entityType: entity.entityType,
       },
+    });
+
+    await refreshEntityGovernance({
+      tenantId: request.user.tenantId,
+      entityId: entity.id,
     });
 
     return reply.code(201).send({

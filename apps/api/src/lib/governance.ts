@@ -1,10 +1,14 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, notInArray } from "drizzle-orm";
 
 import { db } from "@vaxis/db";
 import {
   documents,
   entityDocumentRules,
   entityRiskScores,
+  entities,
+  notifications,
+  userEntityAssignments,
+  users,
 } from "@vaxis/db/schema";
 import { clampScore, getExpirySeverity } from "@vaxis/domain";
 
@@ -321,4 +325,265 @@ export async function syncEntityRiskScore(input: {
     });
 
   return snapshot;
+}
+
+function buildNotificationSourceKey(input: RiskAlert & { entityId: string }) {
+  if (input.kind === "expiry") {
+    return `expiry:${input.entityId}:${input.documentId ?? "none"}`;
+  }
+
+  return `gap:${input.entityId}:${input.documentTypeId ?? "unknown"}`;
+}
+
+function buildNotificationPayload(input: RiskAlert & { entityId: string }) {
+  if (input.kind === "expiry") {
+    const daysRemaining = input.daysRemaining ?? 0;
+
+    return {
+      sourceKey: buildNotificationSourceKey(input),
+      type: "EXPIRY_WARNING" as const,
+      title: input.title,
+      message:
+        input.daysRemaining === null
+          ? input.reason
+          : `${input.reason} ${daysRemaining} day(s) remaining.`,
+      dueDate:
+        input.daysRemaining === null
+          ? null
+          : daysRemaining > 7
+            ? new Date(Date.now() + (daysRemaining - 7) * 24 * 60 * 60 * 1000)
+            : new Date(),
+    };
+  }
+
+  return {
+    sourceKey: buildNotificationSourceKey(input),
+    type: "DOCUMENT_MISSING" as const,
+    title: input.title,
+    message: input.reason,
+    dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+  };
+}
+
+async function resolveAssignee(input: { tenantId: string; entityId: string }) {
+  const entityAssignments = await db
+    .select({
+      userId: users.id,
+      role: users.role,
+    })
+    .from(userEntityAssignments)
+    .innerJoin(users, eq(users.id, userEntityAssignments.userId))
+    .where(
+      and(
+        eq(userEntityAssignments.entityId, input.entityId),
+        eq(users.tenantId, input.tenantId),
+        eq(users.status, "ACTIVE"),
+      ),
+    );
+
+  const manager = entityAssignments.find(
+    (assignment) => assignment.role === "SUBSIDIARY_MANAGER",
+  );
+
+  if (manager) {
+    return manager.userId;
+  }
+
+  const [clientAdmin] = await db
+    .select({
+      userId: users.id,
+    })
+    .from(users)
+    .where(
+      and(
+        eq(users.tenantId, input.tenantId),
+        eq(users.role, "CLIENT_ADMIN"),
+        eq(users.status, "ACTIVE"),
+      ),
+    )
+    .limit(1);
+
+  return clientAdmin?.userId ?? null;
+}
+
+export async function syncEntityNotifications(input: {
+  tenantId: string;
+  entityId: string;
+  alerts: RiskAlert[];
+}) {
+  const assigneeUserId = await resolveAssignee({
+    tenantId: input.tenantId,
+    entityId: input.entityId,
+  });
+
+  const openStatuses = [
+    "PENDING",
+    "ACKNOWLEDGED",
+    "IN_PROGRESS",
+    "ESCALATED",
+  ] as const;
+  const currentSourceKeys = input.alerts.map((alert) =>
+    buildNotificationSourceKey({
+      ...alert,
+      entityId: input.entityId,
+    }),
+  );
+
+  for (const alert of input.alerts) {
+    const payload = buildNotificationPayload({
+      ...alert,
+      entityId: input.entityId,
+    });
+
+    const [existing] = await db
+      .select()
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.tenantId, input.tenantId),
+          eq(notifications.sourceKey, payload.sourceKey),
+        ),
+      )
+      .limit(1);
+
+    const nextStatus =
+      existing &&
+      existing.status !== "RESOLVED" &&
+      existing.status !== "CLOSED"
+        ? existing.status
+        : "PENDING";
+
+    await db
+      .insert(notifications)
+      .values({
+        tenantId: input.tenantId,
+        entityId: input.entityId,
+        documentId: alert.documentId ?? null,
+        sourceKey: payload.sourceKey,
+        type: payload.type,
+        severity: alert.severity,
+        status: nextStatus,
+        title: payload.title,
+        message: payload.message,
+        assignedTo: assigneeUserId,
+        escalationLevel: alert.severity === "CRITICAL" ? 2 : 0,
+        dueDate: payload.dueDate ? payload.dueDate.toISOString().slice(0, 10) : null,
+        resolvedAt: nextStatus === "PENDING" ? null : existing?.resolvedAt ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [notifications.tenantId, notifications.sourceKey],
+        set: {
+          documentId: alert.documentId ?? null,
+          type: payload.type,
+          severity: alert.severity,
+          title: payload.title,
+          message: payload.message,
+          assignedTo: assigneeUserId,
+          dueDate: payload.dueDate ? payload.dueDate.toISOString().slice(0, 10) : null,
+          status: nextStatus,
+          resolvedAt: nextStatus === "PENDING" ? null : existing?.resolvedAt ?? null,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  const staleNotifications = await db
+    .select({
+      id: notifications.id,
+      sourceKey: notifications.sourceKey,
+    })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.tenantId, input.tenantId),
+        eq(notifications.entityId, input.entityId),
+        inArray(notifications.status, openStatuses),
+        currentSourceKeys.length > 0
+          ? notInArray(notifications.sourceKey, currentSourceKeys)
+          : undefined,
+      ),
+    );
+
+  if (currentSourceKeys.length === 0) {
+    const allOpenNotifications = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.tenantId, input.tenantId),
+          eq(notifications.entityId, input.entityId),
+          inArray(notifications.status, openStatuses),
+        ),
+      );
+
+    if (allOpenNotifications.length > 0) {
+      await db
+        .update(notifications)
+        .set({
+          status: "CLOSED",
+          resolvedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(notifications.tenantId, input.tenantId),
+            eq(notifications.entityId, input.entityId),
+            inArray(
+              notifications.id,
+              allOpenNotifications.map((notification) => notification.id),
+            ),
+          ),
+        );
+    }
+
+    return;
+  }
+
+  if (staleNotifications.length > 0) {
+    await db
+      .update(notifications)
+      .set({
+        status: "CLOSED",
+        resolvedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(notifications.tenantId, input.tenantId),
+          eq(notifications.entityId, input.entityId),
+          inArray(
+            notifications.id,
+            staleNotifications.map((notification) => notification.id),
+          ),
+        ),
+      );
+  }
+}
+
+export async function refreshEntityGovernance(input: {
+  tenantId: string;
+  entityId: string;
+}) {
+  const snapshot = await syncEntityRiskScore(input);
+  await syncEntityNotifications({
+    tenantId: input.tenantId,
+    entityId: input.entityId,
+    alerts: snapshot.alerts,
+  });
+
+  return snapshot;
+}
+
+export async function refreshTenantGovernance(input: { tenantId: string }) {
+  const entityRows = await db
+    .select({ id: entities.id })
+    .from(entities)
+    .where(eq(entities.tenantId, input.tenantId));
+
+  for (const entity of entityRows) {
+    await refreshEntityGovernance({
+      tenantId: input.tenantId,
+      entityId: entity.id,
+    });
+  }
 }

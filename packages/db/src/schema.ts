@@ -419,6 +419,7 @@ export const notifications = pgTable(
     entityId: uuid("entity_id").references(() => entities.id, {
       onDelete: "set null",
     }),
+    sourceKey: varchar("source_key", { length: 255 }).notNull(),
     type: notificationTypeEnum("type").notNull(),
     severity: severityLevelEnum("severity").notNull(),
     status: notificationStateEnum("status").notNull().default("PENDING"),
@@ -443,6 +444,10 @@ export const notifications = pgTable(
       .notNull(),
   },
   (table) => [
+    uniqueIndex("notifications_tenant_source_key_idx").on(
+      table.tenantId,
+      table.sourceKey,
+    ),
     index("notifications_summary_idx").on(
       table.tenantId,
       table.status,

@@ -11,6 +11,7 @@ import { apiEnv, jwtRuntime } from "./config";
 import { authRoutes } from "./routes/auth";
 import { dashboardRoutes } from "./routes/dashboard";
 import { documentRoutes } from "./routes/documents";
+import { governanceRoutes } from "./routes/governance";
 import { healthRoutes } from "./routes/health";
 import { platformRoutes } from "./routes/platform";
 import { taxonomyRoutes } from "./routes/taxonomy";
@@ -65,6 +66,7 @@ export async function createApp() {
   await app.register(taxonomyRoutes);
   await app.register(documentRoutes);
   await app.register(dashboardRoutes);
+  await app.register(governanceRoutes);
 
   return app;
 }

@@ -16,7 +16,7 @@ import { toDnaCode } from "@vaxis/domain";
 import {
   deriveDocumentStatusFromExpiry,
   getDaysRemaining,
-  syncEntityRiskScore,
+  refreshEntityGovernance,
 } from "../lib/governance";
 import { ensureAuthenticated, ensurePermission } from "../lib/permissions";
 
@@ -344,7 +344,7 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    const riskSnapshot = await syncEntityRiskScore({
+    const riskSnapshot = await refreshEntityGovernance({
       tenantId: request.user.tenantId,
       entityId: entity.id,
     });

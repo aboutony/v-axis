@@ -208,6 +208,10 @@ export type DashboardSummaryResponse = {
     createdAt: string;
     metadata: Record<string, unknown>;
   }>;
+  notificationSummary: {
+    open: number;
+    critical: number;
+  };
   entities: Array<{
     id: string;
     entityName: string;
@@ -223,6 +227,52 @@ export type DashboardSummaryResponse = {
       expired: number;
       archived: number;
     };
+  }>;
+};
+
+export type RulesResponse = {
+  rules: Array<{
+    id: string;
+    tenantId: string;
+    entityType: "SUBSIDIARY" | "JV" | "ASSOCIATE" | "BRANCH";
+    documentTypeId: string;
+    isMandatory: boolean;
+    country: string | null;
+    createdAt: string;
+    documentTypeLabel: string;
+    documentSector: string;
+  }>;
+};
+
+export type RuleInput = {
+  entityType: "SUBSIDIARY" | "JV" | "ASSOCIATE" | "BRANCH";
+  documentTypeId: string;
+  isMandatory: boolean;
+  country?: string | null;
+};
+
+export type NotificationsResponse = {
+  notifications: Array<{
+    id: string;
+    tenantId: string;
+    documentId: string | null;
+    entityId: string | null;
+    sourceKey: string;
+    type: string;
+    severity: string;
+    status: string;
+    title: string;
+    message: string;
+    assignedTo: string | null;
+    delegatedBy: string | null;
+    escalationLevel: number;
+    dueDate: string | null;
+    acknowledgedAt: string | null;
+    resolvedAt: string | null;
+    escalatedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    entityName: string;
   }>;
 };
 
@@ -414,4 +464,88 @@ export async function fetchDashboardSummary(accessToken: string) {
   });
 
   return parseJson<DashboardSummaryResponse>(response);
+}
+
+export async function fetchRules(accessToken: string) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/rules`, {
+    headers: buildHeaders(accessToken),
+    credentials: "include",
+  });
+
+  return parseJson<RulesResponse>(response);
+}
+
+export async function createRule(accessToken: string, input: RuleInput) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/rules`, {
+    method: "POST",
+    headers: buildHeaders(accessToken, true),
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+
+  return parseJson<{
+    message: string;
+    rule: RulesResponse["rules"][number];
+  }>(response);
+}
+
+export async function deleteRule(accessToken: string, ruleId: string) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/rules/${ruleId}`, {
+    method: "DELETE",
+    headers: buildHeaders(accessToken),
+    credentials: "include",
+  });
+
+  return parseJson<{ message: string }>(response);
+}
+
+export async function refreshGovernance(accessToken: string) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/governance/refresh`, {
+    method: "POST",
+    headers: buildHeaders(accessToken),
+    credentials: "include",
+  });
+
+  return parseJson<{ message: string }>(response);
+}
+
+export async function fetchNotifications(accessToken: string) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/notifications`, {
+    headers: buildHeaders(accessToken),
+    credentials: "include",
+  });
+
+  return parseJson<NotificationsResponse>(response);
+}
+
+export async function acknowledgeNotification(accessToken: string, notificationId: string) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/notifications/${notificationId}/acknowledge`,
+    {
+      method: "PATCH",
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<{
+    message: string;
+    notification: NotificationsResponse["notifications"][number];
+  }>(response);
+}
+
+export async function resolveNotification(accessToken: string, notificationId: string) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/notifications/${notificationId}/resolve`,
+    {
+      method: "PATCH",
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<{
+    message: string;
+    notification: NotificationsResponse["notifications"][number];
+  }>(response);
 }
