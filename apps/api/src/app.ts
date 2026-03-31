@@ -16,6 +16,7 @@ import { dashboardRoutes } from "./routes/dashboard";
 import { documentRoutes } from "./routes/documents";
 import { governanceRoutes } from "./routes/governance";
 import { healthRoutes } from "./routes/health";
+import { automationRoutes } from "./routes/automation";
 import { platformRoutes } from "./routes/platform";
 import { taxonomyRoutes } from "./routes/taxonomy";
 import { userRoutes } from "./routes/users";
@@ -77,6 +78,7 @@ export async function createApp() {
   await app.register(platformRoutes);
   await app.register(authRoutes);
   await app.register(auditRoutes);
+  await app.register(automationRoutes);
   await app.register(connectorRoutes);
   await app.register(userRoutes);
   await app.register(taxonomyRoutes);

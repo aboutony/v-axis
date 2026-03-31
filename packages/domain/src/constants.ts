@@ -82,6 +82,7 @@ export const connectorStatuses = ["ACTIVE", "INACTIVE", "ERROR"] as const;
 export const authActionPurposes = ["INVITE", "PASSWORD_RESET"] as const;
 
 export const activityEventTypes = [
+  "automation.delivery.replayed",
   "document.uploaded",
   "document.replaced",
   "document.archived",

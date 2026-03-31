@@ -473,6 +473,82 @@ export type AuditLogsResponse = {
   }>;
 };
 
+export type AutomationOverviewResponse = {
+  worker: {
+    deliveryMode: "QUEUE" | "INLINE";
+    deliveryConcurrency: number;
+    governanceRefreshIntervalMs: number;
+    escalationIntervalMs: number;
+    queueAvailable: boolean;
+    queueMessage: string | null;
+  };
+  queues: {
+    delivery: {
+      waiting: number;
+      active: number;
+      delayed: number;
+      completed: number;
+      failed: number;
+      paused: number;
+    };
+    maintenance: {
+      waiting: number;
+      active: number;
+      delayed: number;
+      completed: number;
+      failed: number;
+      paused: number;
+    };
+  };
+  schedulers: Array<{
+    key: string;
+    name: string;
+    everyMs: number | null;
+    nextRunAt: string | null;
+    iterationCount: number;
+  }>;
+  failureSummary: {
+    deliveryFailed: number;
+    maintenanceFailed: number;
+  };
+  recentDeliveries: Array<{
+    id: string;
+    jobName: string;
+    queueJobId: string;
+    status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+    triggeredBy: string;
+    resourceType: string | null;
+    resourceId: string | null;
+    payloadPreview: Record<string, unknown>;
+    resultSummary: Record<string, unknown>;
+    error: string | null;
+    attemptsMade: number;
+    maxAttempts: number;
+    replayOfId: string | null;
+    availableForReplay: boolean;
+    startedAt: string | null;
+    finishedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  recentMaintenanceRuns: Array<{
+    id: string;
+    jobName: string;
+    queueJobId: string;
+    status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+    triggeredBy: string;
+    payloadPreview: Record<string, unknown>;
+    resultSummary: Record<string, unknown>;
+    error: string | null;
+    attemptsMade: number;
+    maxAttempts: number;
+    startedAt: string | null;
+    finishedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+};
+
 export type WebhooksResponse = {
   availableEvents: string[];
   webhooks: Array<{
@@ -1103,6 +1179,99 @@ export async function fetchAuditLogs(
   );
 
   return parseJson<AuditLogsResponse>(response);
+}
+
+export async function downloadAuditExport(
+  accessToken: string,
+  input: {
+    format: "csv" | "json";
+    limit?: number;
+    eventType?: string;
+    resourceType?: string;
+    userId?: string;
+  },
+) {
+  const params = new URLSearchParams();
+  params.set("format", input.format);
+
+  if (input.limit) {
+    params.set("limit", String(input.limit));
+  }
+
+  if (input.eventType) {
+    params.set("eventType", input.eventType);
+  }
+
+  if (input.resourceType) {
+    params.set("resourceType", input.resourceType);
+  }
+
+  if (input.userId) {
+    params.set("userId", input.userId);
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/audit/export?${params.toString()}`,
+    {
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as ApiPayload;
+    throw new ApiError(
+      typeof payload.message === "string"
+        ? payload.message
+        : "The export could not be generated.",
+      typeof payload.error === "string" ? payload.error : undefined,
+      payload,
+    );
+  }
+
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename=\"([^\"]+)\"/i);
+
+  return {
+    blob: await response.blob(),
+    filename:
+      match?.[1] ??
+      `vaxis-audit-export.${input.format === "csv" ? "csv" : "json"}`,
+  };
+}
+
+export async function fetchAutomationOverview(
+  accessToken: string,
+  limit = 10,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/automation?limit=${encodeURIComponent(String(limit))}`,
+    {
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<AutomationOverviewResponse>(response);
+}
+
+export async function replayAutomationDelivery(
+  accessToken: string,
+  automationJobId: string,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/automation/deliveries/${automationJobId}/replay`,
+    {
+      method: "POST",
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<{
+    message: string;
+    replayJobId: string;
+  }>(response);
 }
 
 export async function fetchWebhooks(accessToken: string) {

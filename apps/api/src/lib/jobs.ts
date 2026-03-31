@@ -4,6 +4,10 @@ import IORedis from "ioredis";
 import type { ActivityEventType } from "@vaxis/domain";
 
 import { apiEnv } from "../config";
+import {
+  createQueuedDeliveryJobRecord,
+  markAutomationJobFailed,
+} from "./automation";
 
 export const queueNames = {
   delivery: "vaxis-delivery",
@@ -56,6 +60,7 @@ export type NotificationEmailJobData = {
 
 export type WebhookEventJobData = {
   tenantId: string;
+  webhookId?: string;
   eventType: ActivityEventType;
   resourceType: string;
   resourceId?: string | null;
@@ -67,6 +72,11 @@ export type MaintenanceJobData = {
   scheduledFor?: string;
 };
 
+export type DeliveryQueueJobData = {
+  automationJobId: string;
+  payload: Record<string, unknown>;
+};
+
 let redisConnection: IORedis | null = null;
 let deliveryQueue:
   | Queue<Record<string, unknown>, unknown, string>
@@ -75,7 +85,7 @@ let maintenanceQueue:
   | Queue<Record<string, unknown>, unknown, string>
   | null = null;
 
-function createRedisConnection() {
+export function createRedisConnection() {
   return new IORedis(apiEnv.REDIS_URL, {
     maxRetriesPerRequest: null,
     enableReadyCheck: true,
@@ -137,8 +147,40 @@ export async function enqueueDeliveryJob(
     | PasswordResetEmailJobData
     | NotificationEmailJobData
     | WebhookEventJobData,
+  options?: {
+    replayOfId?: string | null;
+    triggeredBy?: string;
+  },
 ) {
-  return getDeliveryQueue().add(name, data as Record<string, unknown>);
+  const payload = data as Record<string, unknown>;
+  const automationJobId = await createQueuedDeliveryJobRecord({
+    jobName: name,
+    queueName: queueNames.delivery,
+    payload,
+    triggeredBy: options?.triggeredBy ?? "API",
+    replayOfId: options?.replayOfId ?? null,
+    maxAttempts: 5,
+  });
+
+  try {
+    return await getDeliveryQueue().add(
+      name,
+      {
+        automationJobId,
+        payload,
+      } satisfies DeliveryQueueJobData,
+      {
+        jobId: automationJobId,
+      },
+    );
+  } catch (error) {
+    await markAutomationJobFailed({
+      queueJobId: automationJobId,
+      attemptsMade: 0,
+      error,
+    });
+    throw error;
+  }
 }
 
 export async function enqueueMaintenanceJob(

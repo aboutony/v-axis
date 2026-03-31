@@ -2,15 +2,22 @@ import { Worker, type Job } from "bullmq";
 
 import { apiEnv } from "./config";
 import {
+  createOrUpdateMaintenanceRun,
+  markAutomationJobCompleted,
+  markAutomationJobFailed,
+  markAutomationJobRunning,
+} from "./lib/automation";
+import {
   deliverAssignedNotificationEmailNow,
   deliverInviteEmailNow,
   deliverPasswordResetEmailNow,
 } from "./lib/connectors";
 import {
   closeJobClients,
+  createRedisConnection,
   deliveryJobNames,
+  type DeliveryQueueJobData,
   enqueueMaintenanceJob,
-  getRedisConnection,
   maintenanceJobNames,
   queueNames,
   upsertMaintenanceScheduler,
@@ -55,33 +62,119 @@ function registerWorkerLogging(
   });
 }
 
-async function processDeliveryJob(job: Job<Record<string, unknown>, unknown, string>) {
-  switch (job.name) {
-    case deliveryJobNames.inviteEmail:
-      return deliverInviteEmailNow(job.data as InviteEmailJobData);
-    case deliveryJobNames.passwordResetEmail:
-      return deliverPasswordResetEmailNow(job.data as PasswordResetEmailJobData);
-    case deliveryJobNames.notificationEmail:
-      return deliverAssignedNotificationEmailNow(
-        job.data as NotificationEmailJobData,
-      );
-    case deliveryJobNames.webhookEvent:
-      return emitTenantWebhookEventNow(job.data as WebhookEventJobData);
-    default:
-      throw new Error(`Unsupported delivery job: ${job.name}`);
+async function processDeliveryJob(
+  job: Job<Record<string, unknown>, unknown, string>,
+) {
+  const queueData = job.data as DeliveryQueueJobData;
+  const attemptsMade = job.attemptsMade + 1;
+
+  await markAutomationJobRunning({
+    queueJobId: String(job.id),
+    attemptsMade,
+  });
+
+  try {
+    let result: unknown;
+
+    switch (job.name) {
+      case deliveryJobNames.inviteEmail:
+        result = await deliverInviteEmailNow(
+          queueData.payload as InviteEmailJobData,
+        );
+        break;
+      case deliveryJobNames.passwordResetEmail:
+        result = await deliverPasswordResetEmailNow(
+          queueData.payload as PasswordResetEmailJobData,
+        );
+        break;
+      case deliveryJobNames.notificationEmail:
+        result = await deliverAssignedNotificationEmailNow(
+          queueData.payload as NotificationEmailJobData,
+        );
+        break;
+      case deliveryJobNames.webhookEvent:
+        const webhookResult = await emitTenantWebhookEventNow(
+          queueData.payload as WebhookEventJobData,
+        );
+        result = webhookResult;
+        if (webhookResult.failed > 0 && webhookResult.failures.length > 0) {
+          throw new Error(
+            `Webhook delivery failed: ${webhookResult.failures
+              .map((failure) => failure.error ?? "Unknown webhook error")
+              .join("; ")}`,
+          );
+        }
+        break;
+      default:
+        throw new Error(`Unsupported delivery job: ${job.name}`);
+    }
+
+    await markAutomationJobCompleted({
+      queueJobId: String(job.id),
+      attemptsMade,
+      resultSummary:
+        result && typeof result === "object"
+          ? (result as Record<string, unknown>)
+          : { completed: true },
+    });
+
+    return result;
+  } catch (error) {
+    await markAutomationJobFailed({
+      queueJobId: String(job.id),
+      attemptsMade,
+      error,
+    });
+    throw error;
   }
 }
 
 async function processMaintenanceJob(
   job: Job<Record<string, unknown>, unknown, string>,
 ) {
-  switch (job.name) {
-    case maintenanceJobNames.refreshAllTenants:
-      return refreshGovernanceAcrossTenants();
-    case maintenanceJobNames.escalateAllTenants:
-      return escalateNotificationsAcrossTenants();
-    default:
-      throw new Error(`Unsupported maintenance job: ${job.name}`);
+  const payload = job.data as Record<string, unknown>;
+  const attemptsMade = job.attemptsMade + 1;
+
+  await createOrUpdateMaintenanceRun({
+    queueJobId: String(job.id),
+    queueName: queueNames.maintenance,
+    jobName: job.name,
+    payload,
+    attemptsMade,
+    maxAttempts: job.opts.attempts ?? 1,
+  });
+
+  try {
+    let result: unknown;
+
+    switch (job.name) {
+      case maintenanceJobNames.refreshAllTenants:
+        result = await refreshGovernanceAcrossTenants();
+        break;
+      case maintenanceJobNames.escalateAllTenants:
+        result = await escalateNotificationsAcrossTenants();
+        break;
+      default:
+        throw new Error(`Unsupported maintenance job: ${job.name}`);
+    }
+
+    await markAutomationJobCompleted({
+      queueJobId: String(job.id),
+      attemptsMade,
+      resultSummary:
+        result && typeof result === "object"
+          ? (result as Record<string, unknown>)
+          : { completed: true },
+    });
+
+    return result;
+  } catch (error) {
+    await markAutomationJobFailed({
+      queueJobId: String(job.id),
+      attemptsMade,
+      error,
+    });
+    throw error;
   }
 }
 
@@ -112,17 +205,18 @@ async function bootstrapSchedulers() {
 }
 
 async function main() {
-  const connection = getRedisConnection();
+  const deliveryConnection = createRedisConnection();
+  const maintenanceConnection = createRedisConnection();
 
   const deliveryWorker = new Worker(queueNames.delivery, processDeliveryJob, {
-    connection,
+    connection: deliveryConnection,
     concurrency: apiEnv.WORKER_DELIVERY_CONCURRENCY,
   });
   const maintenanceWorker = new Worker(
     queueNames.maintenance,
     processMaintenanceJob,
     {
-      connection,
+      connection: maintenanceConnection,
       concurrency: 1,
     },
   );
@@ -154,6 +248,12 @@ async function main() {
     await Promise.allSettled([
       deliveryWorker.close(),
       maintenanceWorker.close(),
+    ]);
+    await Promise.allSettled([
+      deliveryConnection.quit().catch(() => deliveryConnection.disconnect()),
+      maintenanceConnection
+        .quit()
+        .catch(() => maintenanceConnection.disconnect()),
     ]);
     await closeJobClients();
 

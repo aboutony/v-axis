@@ -7,9 +7,9 @@ V-AXIS is a multi-tenant governance platform for high-trust document operations 
 - Monorepo structure with `apps/web`, `apps/api`, `packages/domain`, and `packages/db`
 - Shared domain package for roles, permissions, document taxonomy, and DNA-code utilities
 - PostgreSQL schema for tenants, users, taxonomy, documents, sessions, notifications, audit logs, risk scores, connectors, and webhooks
-- Fastify API with OpenAPI docs, tenant bootstrap, JWT sessions, TOTP MFA enrollment and enforcement, invite and reset links, tenant-managed email connectors, taxonomy controls, user administration, governance routes, escalation workflows, audit exploration, managed webhooks, and vault-style document upload/version endpoints
-- Redis-backed worker automation for queued email/webhook delivery plus scheduled governance refresh and overdue escalation
-- React/Vite command-center shell with a real bootstrap form, tenant workspace, MFA setup, invite/reset access flow, email connector controls, taxonomy controls, user ownership management, document registration, file uploads, dashboard views, audit visibility, webhook controls, and actionable notifications
+- Fastify API with OpenAPI docs, tenant bootstrap, JWT sessions, TOTP MFA enrollment and enforcement, invite and reset links, tenant-managed email connectors, taxonomy controls, user administration, governance routes, escalation workflows, automation visibility and replay endpoints, audit exploration/export, managed webhooks, and vault-style document upload/version endpoints
+- Redis-backed worker automation for queued email/webhook delivery plus scheduled governance refresh and overdue escalation, with durable job tracking in PostgreSQL
+- React/Vite command-center shell with a real bootstrap form, tenant workspace, MFA setup, invite/reset access flow, email connector controls, taxonomy controls, user ownership management, document registration, file uploads, dashboard views, audit visibility, webhook controls, automation status panels, and actionable notifications
 - Docker Compose stack for PostgreSQL, Redis, and Mailpit
 
 ## Stack
@@ -88,7 +88,8 @@ The default `npm run dev` command now starts the web app, API, and worker togeth
 6. Define entity document rules, review the generated notification queue, and escalate overdue work where needed.
 7. Configure email connectors for Mailpit/SMTP delivery, then issue invite or reset links and test a notification send.
 8. Configure signed webhooks for outbound alert delivery and review the audit explorer.
-9. Let the worker handle recurring governance refresh and overdue escalation automatically, then verify dashboard summaries and audit trails against live data.
+9. Use the automation control panel to inspect queue health, recent delivery runs, and replay failed webhook/email jobs when needed.
+10. Let the worker handle recurring governance refresh and overdue escalation automatically, then verify dashboard summaries and audit trails against live data.
 
 ## Repo Notes
 

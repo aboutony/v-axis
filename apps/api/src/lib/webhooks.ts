@@ -144,6 +144,25 @@ async function deliverWebhook(input: {
   }
 }
 
+async function loadEnabledWebhook(input: {
+  tenantId: string;
+  webhookId: string;
+}) {
+  const [webhook] = await db
+    .select()
+    .from(webhooks)
+    .where(
+      and(
+        eq(webhooks.id, input.webhookId),
+        eq(webhooks.tenantId, input.tenantId),
+        eq(webhooks.enabled, true),
+      ),
+    )
+    .limit(1);
+
+  return webhook ?? null;
+}
+
 function logWebhookQueueFallback(error: unknown) {
   console.warn(
     "[delivery] Falling back to inline webhook delivery.",
@@ -153,24 +172,40 @@ function logWebhookQueueFallback(error: unknown) {
 
 export async function emitTenantWebhookEventNow(input: {
   tenantId: string;
+  webhookId?: string;
   eventType: ActivityEventType;
   resourceType: string;
   resourceId?: string | null;
   data: Record<string, unknown>;
 }) {
-  const tenantWebhooks = await db
-    .select()
-    .from(webhooks)
-    .where(and(eq(webhooks.tenantId, input.tenantId), eq(webhooks.enabled, true)));
-
-  const subscribedWebhooks = tenantWebhooks.filter((webhook) =>
-    webhook.subscribedEvents.includes(input.eventType),
-  );
+  const subscribedWebhooks =
+    typeof input.webhookId === "string" && input.webhookId.trim()
+      ? (
+          await Promise.all([
+            loadEnabledWebhook({
+              tenantId: input.tenantId,
+              webhookId: input.webhookId,
+            }),
+          ])
+        ).filter((webhook): webhook is WebhookRow => Boolean(webhook))
+      : (
+          await db
+            .select()
+            .from(webhooks)
+            .where(
+              and(
+                eq(webhooks.tenantId, input.tenantId),
+                eq(webhooks.enabled, true),
+              ),
+            )
+        ).filter((webhook) => webhook.subscribedEvents.includes(input.eventType));
 
   if (subscribedWebhooks.length === 0) {
     return {
       attempted: 0,
       delivered: 0,
+      failed: 0,
+      failures: [],
     };
   }
 
@@ -189,21 +224,73 @@ export async function emitTenantWebhookEventNow(input: {
   return {
     attempted: subscribedWebhooks.length,
     delivered: results.filter((result) => result.ok).length,
+    failed: results.filter((result) => !result.ok).length,
+    failures: results
+      .map((result, index) =>
+        result.ok
+          ? null
+          : {
+              webhookId: subscribedWebhooks[index]?.id ?? null,
+              statusCode: result.statusCode ?? null,
+              error: result.error ?? "Unknown webhook delivery error.",
+            },
+      )
+      .filter(
+        (
+          failure,
+        ): failure is {
+          webhookId: string | null;
+          statusCode: number | null;
+          error: string;
+        } => Boolean(failure),
+      ),
   };
 }
 
 export async function emitTenantWebhookEvent(input: WebhookEventJobData) {
+  const tenantWebhooks = await db
+    .select()
+    .from(webhooks)
+    .where(and(eq(webhooks.tenantId, input.tenantId), eq(webhooks.enabled, true)));
+
+  const subscribedWebhooks = tenantWebhooks.filter((webhook) =>
+    webhook.subscribedEvents.includes(input.eventType),
+  );
+
+  if (subscribedWebhooks.length === 0) {
+    return {
+      attempted: 0,
+      delivered: 0,
+      queued: 0,
+    };
+  }
+
   if (apiEnv.JOB_DELIVERY_MODE === "QUEUE") {
-    try {
-      await enqueueDeliveryJob(deliveryJobNames.webhookEvent, input);
-      return {
-        attempted: 0,
-        delivered: 0,
-        queued: 1,
-      };
-    } catch (error) {
-      logWebhookQueueFallback(error);
+    let queued = 0;
+    let delivered = 0;
+
+    for (const webhook of subscribedWebhooks) {
+      try {
+        await enqueueDeliveryJob(deliveryJobNames.webhookEvent, {
+          ...input,
+          webhookId: webhook.id,
+        });
+        queued += 1;
+      } catch (error) {
+        logWebhookQueueFallback(error);
+        const fallbackResult = await emitTenantWebhookEventNow({
+          ...input,
+          webhookId: webhook.id,
+        });
+        delivered += fallbackResult.delivered;
+      }
     }
+
+    return {
+      attempted: subscribedWebhooks.length,
+      delivered,
+      queued,
+    };
   }
 
   return emitTenantWebhookEventNow(input);

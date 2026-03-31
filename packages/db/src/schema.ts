@@ -76,6 +76,16 @@ export const activityEventTypeEnum = pgEnum(
   "activity_event_type",
   activityEventTypes,
 );
+export const automationJobKindEnum = pgEnum("automation_job_kind", [
+  "DELIVERY",
+  "MAINTENANCE",
+]);
+export const automationJobStateEnum = pgEnum("automation_job_state", [
+  "QUEUED",
+  "RUNNING",
+  "COMPLETED",
+  "FAILED",
+]);
 export const userStatusEnum = pgEnum("user_status", [
   "ACTIVE",
   "LOCKED",
@@ -575,6 +585,61 @@ export const webhooks = pgTable(
       .notNull(),
   },
   (table) => [index("webhooks_tenant_enabled_idx").on(table.tenantId, table.enabled)],
+);
+
+export const automationJobs = pgTable(
+  "automation_jobs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
+      onDelete: "set null",
+    }),
+    jobKind: automationJobKindEnum("job_kind").notNull(),
+    queueName: varchar("queue_name", { length: 50 }).notNull(),
+    jobName: varchar("job_name", { length: 120 }).notNull(),
+    queueJobId: varchar("queue_job_id", { length: 255 }).notNull(),
+    status: automationJobStateEnum("status").notNull().default("QUEUED"),
+    triggeredBy: varchar("triggered_by", { length: 40 }).notNull(),
+    resourceType: varchar("resource_type", { length: 50 }),
+    resourceId: uuid("resource_id"),
+    payloadPreview: jsonb("payload_preview")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    payloadEncrypted: text("payload_encrypted"),
+    resultSummary: jsonb("result_summary")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    error: text("error"),
+    attemptsMade: integer("attempts_made").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(1),
+    replayOfId: uuid("replay_of_id"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("automation_jobs_queue_job_idx").on(table.queueJobId),
+    index("automation_jobs_tenant_kind_idx").on(
+      table.tenantId,
+      table.jobKind,
+      table.status,
+      table.createdAt,
+    ),
+    index("automation_jobs_queue_status_idx").on(
+      table.queueName,
+      table.status,
+      table.createdAt,
+    ),
+    index("automation_jobs_resource_idx").on(table.resourceType, table.resourceId),
+    index("automation_jobs_replay_idx").on(table.replayOfId),
+  ],
 );
 
 export const auditLogs = pgTable(

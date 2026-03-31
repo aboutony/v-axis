@@ -11,7 +11,9 @@ import {
   createEntity,
   createRule,
   deleteRule,
+  downloadAuditExport,
   escalateOverdueNotifications,
+  fetchAutomationOverview,
   fetchAuditLogs,
   fetchConnectors,
   fetchDashboardSummary,
@@ -25,6 +27,7 @@ import {
   generateUserPasswordResetLink,
   login,
   refreshGovernance,
+  replayAutomationDelivery,
   resetUserMfa,
   registerDocument,
   replaceDocumentFile,
@@ -188,6 +191,15 @@ export function WorkspacePage({
     resourceType: "",
     userId: "",
   });
+  const [auditExportState, setAuditExportState] = useState<{
+    pendingFormat: "csv" | "json" | null;
+    message: string | null;
+    error: string | null;
+  }>({
+    pendingFormat: null,
+    message: null,
+    error: null,
+  });
   const [connectorForm, setConnectorForm] = useState<CreateConnectorInput>({
     name: "",
     status: "ACTIVE",
@@ -291,6 +303,11 @@ export function WorkspacePage({
     },
     enabled: Boolean(accessToken),
   });
+  const automationQuery = useQuery({
+    queryKey: ["workspace-automation", accessToken],
+    queryFn: () => fetchAutomationOverview(accessToken!),
+    enabled: Boolean(accessToken),
+  });
   const connectorsQuery = useQuery({
     queryKey: ["workspace-connectors", accessToken],
     queryFn: () => fetchConnectors(accessToken!),
@@ -307,6 +324,7 @@ export function WorkspacePage({
   const workspaceUsers = usersQuery.data?.users ?? [];
   const emailConnectors = connectorsQuery.data?.connectors ?? [];
   const webhookEvents = webhooksQuery.data?.availableEvents ?? [];
+  const automationOverview = automationQuery.data;
 
   const [categoryEdits, setCategoryEdits] = useState<
     Record<
@@ -471,6 +489,62 @@ export function WorkspacePage({
     }
   }
 
+  async function handleAuditExport(format: "csv" | "json") {
+    if (!accessToken) {
+      return;
+    }
+
+    setAuditExportState({
+      pendingFormat: format,
+      message: null,
+      error: null,
+    });
+
+    try {
+      const exportInput: Parameters<typeof downloadAuditExport>[1] = {
+        format,
+        limit: 100,
+      };
+
+      if (auditFilters.eventType) {
+        exportInput.eventType = auditFilters.eventType;
+      }
+
+      if (auditFilters.resourceType) {
+        exportInput.resourceType = auditFilters.resourceType;
+      }
+
+      if (auditFilters.userId) {
+        exportInput.userId = auditFilters.userId;
+      }
+
+      const exported = await downloadAuditExport(accessToken, exportInput);
+      const url = URL.createObjectURL(exported.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = exported.filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+
+      setAuditExportState({
+        pendingFormat: null,
+        message: `${exported.filename} downloaded.`,
+        error: null,
+      });
+    } catch (error) {
+      setAuditExportState({
+        pendingFormat: null,
+        message: null,
+        error:
+          error instanceof Error
+            ? error.message
+            : "The audit export could not be generated.",
+      });
+    }
+  }
+
   const loginMutation = useMutation({
     mutationFn: login,
     onSuccess: (nextSession) => {
@@ -516,6 +590,9 @@ export function WorkspacePage({
       }),
       queryClient.invalidateQueries({
         queryKey: ["workspace-audit", accessToken],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["workspace-automation", accessToken],
       }),
       queryClient.invalidateQueries({
         queryKey: ["workspace-connectors", accessToken],
@@ -759,6 +836,11 @@ export function WorkspacePage({
   const testWebhookMutation = useMutation({
     mutationFn: (input: { webhookId: string; eventType?: string }) =>
       testWebhook(accessToken!, input.webhookId, input.eventType),
+    onSuccess: refreshWorkspace,
+  });
+  const replayAutomationDeliveryMutation = useMutation({
+    mutationFn: (automationJobId: string) =>
+      replayAutomationDelivery(accessToken!, automationJobId),
     onSuccess: refreshWorkspace,
   });
   const escalateNotificationsMutation = useMutation({
@@ -2938,6 +3020,221 @@ export function WorkspacePage({
         ) : null}
       </section>
 
+      <section className="card workspace-header-card">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">Automation Control</p>
+            <h3>Worker health, scheduler cadence, and delivery replay</h3>
+          </div>
+        </div>
+
+        <div className="workspace-actions">
+          <button
+            className="secondary-button"
+            disabled={automationQuery.isFetching}
+            onClick={() => {
+              void automationQuery.refetch();
+            }}
+            type="button"
+          >
+            {automationQuery.isFetching
+              ? "Refreshing automation..."
+              : "Refresh automation status"}
+          </button>
+        </div>
+
+        <div className="meta-grid">
+          <MetricBox
+            label="Delivery failures"
+            value={String(automationOverview?.failureSummary.deliveryFailed ?? 0)}
+          />
+          <MetricBox
+            label="Maintenance failures"
+            value={String(
+              automationOverview?.failureSummary.maintenanceFailed ?? 0,
+            )}
+          />
+          <MetricBox
+            label="Delivery queue"
+            value={String(automationOverview?.queues.delivery.waiting ?? 0)}
+          />
+          <MetricBox
+            label="Maintenance queue"
+            value={String(automationOverview?.queues.maintenance.waiting ?? 0)}
+          />
+        </div>
+
+        <div className="user-admin-summary">
+          <span>
+            Mode: {automationOverview?.worker.deliveryMode ?? "Unknown"}
+          </span>
+          <span>
+            Delivery concurrency:{" "}
+            {automationOverview?.worker.deliveryConcurrency ?? 0}
+          </span>
+          <span>
+            Refresh cadence:{" "}
+            {formatDurationMs(
+              automationOverview?.worker.governanceRefreshIntervalMs ?? null,
+            )}
+          </span>
+          <span>
+            Escalation cadence:{" "}
+            {formatDurationMs(
+              automationOverview?.worker.escalationIntervalMs ?? null,
+            )}
+          </span>
+        </div>
+
+        {!automationOverview?.worker.queueAvailable &&
+        automationOverview?.worker.queueMessage ? (
+          <p className="form-feedback error">
+            {automationOverview.worker.queueMessage}
+          </p>
+        ) : null}
+
+        <div className="workspace-table">
+          {(automationOverview?.schedulers ?? []).map((scheduler) => (
+            <div className="workspace-row" key={scheduler.key}>
+              <div>
+                <strong>{scheduler.name}</strong>
+                <p className="helper-copy">Scheduler key {scheduler.key}</p>
+              </div>
+              <span>
+                Every {formatDurationMs(scheduler.everyMs)}
+              </span>
+              <span>
+                Next {formatDateTime(scheduler.nextRunAt, "Not scheduled")}
+              </span>
+              <span>Iterations {scheduler.iterationCount}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="team-admin-grid">
+          <div className="user-admin-list">
+            {(automationOverview?.recentDeliveries ?? []).map((job) => (
+              <article className="user-admin-card" key={job.id}>
+                <div className="category-editor-top">
+                  <div>
+                    <strong>{job.jobName}</strong>
+                    <p className="helper-copy">
+                      Triggered by {job.triggeredBy}
+                    </p>
+                  </div>
+                  <span className="meta-pill">{job.status}</span>
+                </div>
+
+                <div className="user-admin-summary">
+                  <span>
+                    Attempts {job.attemptsMade}/{job.maxAttempts}
+                  </span>
+                  <span>
+                    Started {formatDateTime(job.startedAt, "Not started")}
+                  </span>
+                  <span>
+                    Finished {formatDateTime(job.finishedAt, "Not finished")}
+                  </span>
+                </div>
+
+                <pre className="audit-metadata">
+                  {JSON.stringify(job.payloadPreview, null, 2)}
+                </pre>
+
+                {Object.keys(job.resultSummary).length > 0 ? (
+                  <pre className="audit-metadata">
+                    {JSON.stringify(job.resultSummary, null, 2)}
+                  </pre>
+                ) : null}
+
+                {job.error ? (
+                  <p className="form-feedback error">{job.error}</p>
+                ) : null}
+
+                {job.availableForReplay ? (
+                  <div className="workspace-row-actions">
+                    <button
+                      className="secondary-button"
+                      disabled={replayAutomationDeliveryMutation.isPending}
+                      onClick={() =>
+                        replayAutomationDeliveryMutation.mutate(job.id)
+                      }
+                      type="button"
+                    >
+                      {replayAutomationDeliveryMutation.isPending
+                        ? "Replaying..."
+                        : "Replay failed delivery"}
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+
+          <div className="user-admin-list">
+            {(automationOverview?.recentMaintenanceRuns ?? []).map((job) => (
+              <article className="user-admin-card" key={job.id}>
+                <div className="category-editor-top">
+                  <div>
+                    <strong>{job.jobName}</strong>
+                    <p className="helper-copy">
+                      Triggered by {job.triggeredBy}
+                    </p>
+                  </div>
+                  <span className="meta-pill">{job.status}</span>
+                </div>
+
+                <div className="user-admin-summary">
+                  <span>
+                    Attempts {job.attemptsMade}/{job.maxAttempts}
+                  </span>
+                  <span>
+                    Started {formatDateTime(job.startedAt, "Not started")}
+                  </span>
+                  <span>
+                    Finished {formatDateTime(job.finishedAt, "Not finished")}
+                  </span>
+                </div>
+
+                <pre className="audit-metadata">
+                  {JSON.stringify(job.payloadPreview, null, 2)}
+                </pre>
+
+                <pre className="audit-metadata">
+                  {JSON.stringify(job.resultSummary, null, 2)}
+                </pre>
+
+                {job.error ? (
+                  <p className="form-feedback error">{job.error}</p>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        </div>
+
+        {replayAutomationDeliveryMutation.data ? (
+          <div className="success-panel">
+            <h4>{replayAutomationDeliveryMutation.data.message}</h4>
+            <p>
+              Replay job {replayAutomationDeliveryMutation.data.replayJobId} was
+              queued for delivery.
+            </p>
+          </div>
+        ) : null}
+
+        {replayAutomationDeliveryMutation.error ? (
+          <p className="form-feedback error">
+            {replayAutomationDeliveryMutation.error.message}
+          </p>
+        ) : null}
+
+        {automationQuery.error ? (
+          <p className="form-feedback error">
+            {automationQuery.error.message}
+          </p>
+        ) : null}
+      </section>
+
       <section className="card">
         <div className="card-header">
           <div>
@@ -3030,6 +3327,33 @@ export function WorkspacePage({
           </div>
         </div>
 
+        <div className="workspace-actions">
+          <button
+            className="secondary-button"
+            disabled={auditExportState.pendingFormat === "csv"}
+            onClick={() => {
+              void handleAuditExport("csv");
+            }}
+            type="button"
+          >
+            {auditExportState.pendingFormat === "csv"
+              ? "Exporting CSV..."
+              : "Export CSV"}
+          </button>
+          <button
+            className="secondary-button"
+            disabled={auditExportState.pendingFormat === "json"}
+            onClick={() => {
+              void handleAuditExport("json");
+            }}
+            type="button"
+          >
+            {auditExportState.pendingFormat === "json"
+              ? "Exporting JSON..."
+              : "Export JSON"}
+          </button>
+        </div>
+
         <div className="audit-filter-grid">
           <label>
             Event type
@@ -3117,6 +3441,17 @@ export function WorkspacePage({
         {auditQuery.error ? (
           <p className="form-feedback error">{auditQuery.error.message}</p>
         ) : null}
+
+        {auditExportState.error ? (
+          <p className="form-feedback error">{auditExportState.error}</p>
+        ) : null}
+
+        {auditExportState.message ? (
+          <div className="success-panel">
+            <h4>Audit export ready</h4>
+            <p>{auditExportState.message}</p>
+          </div>
+        ) : null}
       </section>
     </div>
   );
@@ -3134,9 +3469,9 @@ function formatDate(value: string | null) {
   });
 }
 
-function formatDateTime(value: string | null) {
+function formatDateTime(value: string | null, emptyLabel = "No login yet") {
   if (!value) {
-    return "No login yet";
+    return emptyLabel;
   }
 
   return new Date(value).toLocaleString(undefined, {
@@ -3146,6 +3481,27 @@ function formatDateTime(value: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatDurationMs(value: number | null) {
+  if (!value || value <= 0) {
+    return "n/a";
+  }
+
+  const totalMinutes = Math.round(value / 60000);
+
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+
+  return `${hours}h ${minutes}m`;
 }
 
 function MetricBox({ label, value }: { label: string; value: string }) {
