@@ -16,7 +16,21 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1).default("redis://127.0.0.1:6379"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
+  TRUST_PROXY: z
+    .union([z.boolean(), z.enum(["true", "false"])])
+    .optional()
+    .transform((value) =>
+      value === undefined ? undefined : value === true || value === "true",
+    ),
   COOKIE_SECRET: z.string().min(16).default("vaxis-cookie-secret-dev"),
+  COOKIE_DOMAIN: z.string().trim().min(1).optional(),
+  COOKIE_SAME_SITE: z.enum(["lax", "strict", "none"]).default("lax"),
+  COOKIE_SECURE: z
+    .union([z.boolean(), z.enum(["true", "false"])])
+    .optional()
+    .transform((value) =>
+      value === undefined ? undefined : value === true || value === "true",
+    ),
   JWT_SECRET: z.string().min(16).default("vaxis-jwt-secret-dev"),
   JWT_PRIVATE_KEY: z.string().optional(),
   JWT_PUBLIC_KEY: z.string().optional(),
@@ -65,6 +79,11 @@ const parsedEnv = envSchema.parse(process.env);
 
 export const apiEnv = {
   ...parsedEnv,
+  TRUST_PROXY: parsedEnv.TRUST_PROXY ?? parsedEnv.NODE_ENV === "production",
+  COOKIE_SECURE:
+    parsedEnv.COOKIE_SECURE ??
+    (parsedEnv.NODE_ENV === "production" ||
+      parsedEnv.COOKIE_SAME_SITE === "none"),
   APP_ENCRYPTION_SECRET:
     parsedEnv.APP_ENCRYPTION_SECRET ?? parsedEnv.MFA_ENCRYPTION_SECRET,
   APP_BASE_URL:

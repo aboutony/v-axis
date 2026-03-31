@@ -113,6 +113,18 @@ function normalizeUserAgent(userAgent: string | string[] | undefined) {
   return Array.isArray(userAgent) ? userAgent.join(" ") : userAgent;
 }
 
+function buildRefreshCookieOptions() {
+  return {
+    httpOnly: true as const,
+    sameSite: apiEnv.COOKIE_SAME_SITE,
+    secure: apiEnv.COOKIE_SECURE,
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+    signed: false,
+    ...(apiEnv.COOKIE_DOMAIN ? { domain: apiEnv.COOKIE_DOMAIN } : {}),
+  };
+}
+
 function getActionTokenReplyCode(code: string) {
   switch (code) {
     case "ACTION_TOKEN_NOT_FOUND":
@@ -190,14 +202,11 @@ async function issueSession(input: {
     expiresAt: refreshTokenExpiresAt,
   });
 
-  input.reply.setCookie("vaxis_refresh_token", refreshToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: apiEnv.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-    signed: false,
-  });
+  input.reply.setCookie(
+    "vaxis_refresh_token",
+    refreshToken,
+    buildRefreshCookieOptions(),
+  );
 
   return {
     accessToken,
@@ -582,7 +591,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       .limit(1);
 
     if (!session || session.revokedAt || session.expiresAt <= now) {
-      reply.clearCookie("vaxis_refresh_token", { path: "/" });
+      reply.clearCookie("vaxis_refresh_token", buildRefreshCookieOptions());
       return reply.code(401).send({
         error: "SESSION_EXPIRED",
         message: "Your session has expired. Please sign in again.",
@@ -596,7 +605,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       .limit(1);
 
     if (!user) {
-      reply.clearCookie("vaxis_refresh_token", { path: "/" });
+      reply.clearCookie("vaxis_refresh_token", buildRefreshCookieOptions());
       return reply.code(401).send({
         error: "SESSION_INVALID",
         message: "Unable to restore this session.",
@@ -639,7 +648,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         .where(eq(userSessions.refreshTokenHash, refreshTokenHash));
     }
 
-    reply.clearCookie("vaxis_refresh_token", { path: "/" });
+    reply.clearCookie("vaxis_refresh_token", buildRefreshCookieOptions());
 
     return {
       message: "Session closed.",

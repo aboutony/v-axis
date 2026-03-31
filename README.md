@@ -95,4 +95,5 @@ The default `npm run dev` command now starts the web app, API, and worker togeth
 
 - The original business and solution documents remain in the repository root as source material.
 - Architecture decisions are captured under [docs/adr](docs/adr).
+- Deployment guidance is captured in [docs/deployment.md](docs/deployment.md), with Vercel for `apps/web` and Render/Railway guidance for `apps/api` plus the worker.
 - The current implementation intentionally favors a clean control plane and product contracts over premature connector complexity.

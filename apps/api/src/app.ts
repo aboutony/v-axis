@@ -38,6 +38,7 @@ export async function createApp() {
 
   const app = Fastify({
     logger,
+    trustProxy: apiEnv.TRUST_PROXY,
   });
 
   await app.register(cors, {

@@ -1,0 +1,129 @@
+services:
+  - type: web
+    name: v-axis-api
+    env: node
+    rootDir: .
+    plan: starter
+    autoDeploy: true
+    buildCommand: npm install && npm run build -w @vaxis/api
+    startCommand: npm run start -w @vaxis/api
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: TRUST_PROXY
+        value: "true"
+      - key: COOKIE_SECRET
+        sync: false
+      - key: COOKIE_SAME_SITE
+        value: none
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: JWT_SECRET
+        sync: false
+      - key: MFA_ENCRYPTION_SECRET
+        sync: false
+      - key: APP_ENCRYPTION_SECRET
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: WEBHOOK_TIMEOUT_MS
+        value: "5000"
+      - key: EMAIL_TRANSPORT
+        value: SMTP
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_FROM_ADDRESS
+        sync: false
+      - key: EMAIL_FROM_NAME
+        sync: false
+      - key: VAULT_STORAGE_ROOT
+        sync: false
+      - key: JOB_DELIVERY_MODE
+        value: QUEUE
+      - key: WORKER_DELIVERY_CONCURRENCY
+        value: "5"
+      - key: WORKER_GOVERNANCE_REFRESH_INTERVAL_MS
+        value: "900000"
+      - key: WORKER_ESCALATION_INTERVAL_MS
+        value: "300000"
+
+  - type: worker
+    name: v-axis-worker
+    env: node
+    rootDir: .
+    plan: starter
+    autoDeploy: true
+    buildCommand: npm install && npm run build -w @vaxis/api
+    startCommand: npm run start:worker -w @vaxis/api
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: TRUST_PROXY
+        value: "true"
+      - key: COOKIE_SECRET
+        sync: false
+      - key: COOKIE_SAME_SITE
+        value: none
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: JWT_SECRET
+        sync: false
+      - key: MFA_ENCRYPTION_SECRET
+        sync: false
+      - key: APP_ENCRYPTION_SECRET
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: WEBHOOK_TIMEOUT_MS
+        value: "5000"
+      - key: EMAIL_TRANSPORT
+        value: SMTP
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_FROM_ADDRESS
+        sync: false
+      - key: EMAIL_FROM_NAME
+        sync: false
+      - key: VAULT_STORAGE_ROOT
+        sync: false
+      - key: JOB_DELIVERY_MODE
+        value: QUEUE
+      - key: WORKER_DELIVERY_CONCURRENCY
+        value: "5"
+      - key: WORKER_GOVERNANCE_REFRESH_INTERVAL_MS
+        value: "900000"
+      - key: WORKER_ESCALATION_INTERVAL_MS
+        value: "300000"
