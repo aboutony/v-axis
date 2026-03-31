@@ -55,8 +55,7 @@ import {
   type UpdateWebhookInput,
   type UsersResponse,
 } from "../lib/api";
-
-const sessionStorageKey = "vaxis.session";
+import { clearStoredSession, storeSession } from "../lib/session";
 
 function readSelectedValues(select: HTMLSelectElement) {
   return Array.from(select.selectedOptions).map((option) => option.value);
@@ -451,9 +450,9 @@ export function WorkspacePage({
 
   function persistSession(nextSession: AuthSession | null) {
     if (nextSession) {
-      localStorage.setItem(sessionStorageKey, JSON.stringify(nextSession));
+      storeSession(nextSession);
     } else {
-      localStorage.removeItem(sessionStorageKey);
+      clearStoredSession();
     }
 
     onSessionChange(nextSession);
@@ -3511,19 +3510,4 @@ function MetricBox({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
-}
-
-export function loadStoredSession() {
-  const raw = localStorage.getItem(sessionStorageKey);
-
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(raw) as AuthSession;
-  } catch {
-    localStorage.removeItem(sessionStorageKey);
-    return null;
-  }
 }
