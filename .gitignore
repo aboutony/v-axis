@@ -1,0 +1,16 @@
+node_modules
+dist
+build
+.turbo
+.cache
+.vite
+.DS_Store
+coverage
+.env
+.env.local
+.env.*.local
+!.env.example
+apps/web/dist
+apps/api/dist
+packages/db/drizzle
+infra/postgres-data
