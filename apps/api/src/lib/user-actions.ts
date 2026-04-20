@@ -12,8 +12,11 @@ const actionTtlHours: Record<AuthActionPurpose, number> = {
   PASSWORD_RESET: 2,
 };
 
-export function buildUserActionLink(token: string) {
-  const url = new URL("/access", apiEnv.APP_BASE_URL);
+export function buildUserActionLink(
+  token: string,
+  appBaseUrl = apiEnv.APP_BASE_URL,
+) {
+  const url = new URL("/access", appBaseUrl);
   url.searchParams.set("token", token);
   return url.toString();
 }
@@ -32,6 +35,7 @@ export async function issueUserActionToken(input: {
   userId: string;
   issuedBy?: string | null;
   purpose: AuthActionPurpose;
+  appBaseUrl?: string;
 }) {
   const token = generateRefreshToken();
   const tokenHash = hashToken(token);
@@ -65,7 +69,7 @@ export async function issueUserActionToken(input: {
     token,
     purpose: input.purpose,
     expiresAt,
-    link: buildUserActionLink(token),
+    link: buildUserActionLink(token, input.appBaseUrl),
   };
 }
 

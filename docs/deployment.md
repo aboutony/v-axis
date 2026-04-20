@@ -19,6 +19,7 @@ Do not deploy `apps/api` directly to Vercel in its current form. The API depends
 
 ## Frontend on Vercel
 
+- You can keep your existing Vercel project. There is no need to create a new one for this repository.
 - Project root: `apps/web`
 - Framework preset: `Vite`
 - Config file: `apps/web/vercel.json`
@@ -44,12 +45,12 @@ Required backend environment variables:
 
 - `DATABASE_URL`
 - `REDIS_URL`
-- `CORS_ORIGIN=https://your-vercel-domain`
+- `CORS_ORIGIN=https://your-current-vercel-domain`
 - `COOKIE_SECRET`
 - `JWT_SECRET`
 - `MFA_ENCRYPTION_SECRET`
 - `APP_ENCRYPTION_SECRET`
-- `APP_BASE_URL=https://your-vercel-domain`
+- `APP_BASE_URL=https://your-current-vercel-domain`
 - `SMTP_HOST`
 - `SMTP_PORT`
 - `SMTP_SECURE`
@@ -66,6 +67,11 @@ Recommended backend production values:
 - `COOKIE_SAME_SITE=none`
 - `COOKIE_SECURE=true`
 - `JOB_DELIVERY_MODE=QUEUE`
+
+Notes:
+
+- `CORS_ORIGIN` accepts a comma-separated list if you want to trust more than one frontend origin.
+- Invite and password-reset links now prefer the current trusted frontend origin from the request, then fall back to `APP_BASE_URL`.
 
 ## Railway Commands
 
@@ -106,5 +112,5 @@ For production readiness, use one of these approaches:
 4. Run database migrations.
 5. Deploy the worker service.
 6. Deploy the Vercel frontend with `VITE_API_URL` pointed at the API.
-7. Set `CORS_ORIGIN` and `APP_BASE_URL` to the final frontend URL.
+7. Set `CORS_ORIGIN` and `APP_BASE_URL` to the current frontend URL from your existing Vercel project.
 8. Test login, webhook delivery, email delivery, and worker automation from the live environment.

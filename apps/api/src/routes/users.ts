@@ -16,11 +16,16 @@ import {
 } from "@vaxis/db/schema";
 import { defaultPermissionsByRole, permissionFlags } from "@vaxis/domain";
 
+import { apiEnv } from "../config";
 import { hashPassword } from "../lib/auth";
 import {
   dispatchInviteEmail,
   dispatchPasswordResetEmail,
 } from "../lib/connectors";
+import {
+  collectTrustedFrontendOrigins,
+  resolveTrustedFrontendBaseUrl,
+} from "../lib/frontend-origin";
 import { ensureAuthenticated, ensurePermission } from "../lib/permissions";
 import { issueUserActionToken } from "../lib/user-actions";
 
@@ -102,6 +107,22 @@ const userParamsSchema = z.object({
 
 function normalizeUserAgent(userAgent: string | string[] | undefined) {
   return Array.isArray(userAgent) ? userAgent.join(" ") : userAgent;
+}
+
+const trustedFrontendOrigins = collectTrustedFrontendOrigins({
+  corsOrigin: apiEnv.CORS_ORIGIN,
+  appBaseUrl: apiEnv.APP_BASE_URL,
+});
+
+function resolveFrontendBaseUrl(
+  headers: Record<string, string | string[] | undefined>,
+) {
+  return resolveTrustedFrontendBaseUrl({
+    origin: headers.origin,
+    referer: headers.referer,
+    trustedOrigins: trustedFrontendOrigins,
+    fallbackBaseUrl: apiEnv.APP_BASE_URL,
+  });
 }
 
 async function validateEntityAssignments(input: {
@@ -490,6 +511,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
             userId: user.id,
             issuedBy: request.user.sub,
             purpose: "INVITE",
+            appBaseUrl: resolveFrontendBaseUrl(request.headers),
           })
         : null;
 
@@ -782,6 +804,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       userId: user.id,
       issuedBy: request.user.sub,
       purpose: "INVITE",
+      appBaseUrl: resolveFrontendBaseUrl(request.headers),
     });
 
     await db.insert(auditLogs).values({
@@ -861,6 +884,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         userId: user.id,
         issuedBy: request.user.sub,
         purpose: "PASSWORD_RESET",
+        appBaseUrl: resolveFrontendBaseUrl(request.headers),
       });
 
       await db.insert(auditLogs).values({

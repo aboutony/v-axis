@@ -1,0 +1,41 @@
+// apps/api/prisma/schema.prisma
+
+datasource db {
+  provider = "postgresql" // or sqlite for local sovereign development
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  documents Document[]
+  users     User[]
+}
+
+model Document {
+  id             String   @id @default(cuid())
+  category       String   // 'ENTITY' | 'WORKFORCE'
+  type           String   // 'Muqeem', 'Trade License', etc.
+  status         String   // 'ACTIVE', 'EXPIRING_SOON', 'EXPIRED'
+  
+  // Metadata from OCR
+  expiryDate     DateTime
+  issueDate      DateTime?
+  confidence     Float    @default(1.0)
+  
+  // Storage Handshake
+  fileUrl        String   // vaxis://vault/...
+  fileName       String
+  
+  // Relations
+  entityName     String
+  personName     String?  // Only for WORKFORCE
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([type])
+}

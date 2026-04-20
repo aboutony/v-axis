@@ -17,11 +17,12 @@
   "dependencies": {
     "@vaxis/domain": "file:../domain",
     "dotenv": "^16.5.0",
-    "drizzle-orm": "^0.44.0",
+    "drizzle-orm": "^0.45.2",
     "pg": "^8.16.0",
+    "vitest": "4.1.4",
     "zod": "^3.25.28"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31.1"
+    "drizzle-kit": "^0.31.0"
   }
 }

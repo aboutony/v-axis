@@ -28,3 +28,17 @@ services:
     ports:
       - "1025:1025"
       - "8025:8025"
+
+  web:
+    build: ./apps/web
+    container_name: vaxis-web
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/vaxis
+      - REDIS_URL=redis://redis:6379

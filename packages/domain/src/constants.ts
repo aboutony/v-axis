@@ -104,6 +104,10 @@ export const activityEventTypes = [
   "user.updated",
   "connector.updated",
   "email.sent",
+  "email_template.created",
+  "email_template.updated",
+  "email_template.deleted",
+  "email_template.seeded",
   "tenant.bootstrapped",
   "webhook.updated",
 ] as const;

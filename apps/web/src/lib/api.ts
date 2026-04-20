@@ -753,12 +753,15 @@ export async function acceptInvite(input: {
   fullName?: string;
   password: string;
 }) {
-  const response = await fetch(`${API_BASE_URL}/api/v1/auth/invitations/accept`, {
-    method: "POST",
-    headers: buildHeaders(undefined, true),
-    credentials: "include",
-    body: JSON.stringify(input),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/auth/invitations/accept`,
+    {
+      method: "POST",
+      headers: buildHeaders(undefined, true),
+      credentials: "include",
+      body: JSON.stringify(input),
+    },
+  );
 
   return parseJson<AuthActionCompletionResponse>(response);
 }
@@ -827,8 +830,26 @@ export async function updateCategory(
 
   return parseJson<{
     message: string;
-    category: TaxonomyResponse["categories"][number];
+    notification: NotificationsResponse["notifications"][number];
   }>(response);
+}
+
+export async function refreshSession() {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+    method: "POST",
+    credentials: "include",
+  });
+
+  return parseJson<AuthSession>(response);
+}
+
+export async function logout() {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
+
+  return parseJson<{ message: string }>(response);
 }
 
 export async function createEntity(
@@ -1246,10 +1267,7 @@ export async function downloadAuditExport(
   };
 }
 
-export async function fetchAutomationOverview(
-  accessToken: string,
-  limit = 10,
-) {
+export async function fetchAutomationOverview(accessToken: string, limit = 10) {
   const response = await fetch(
     `${API_BASE_URL}/api/v1/automation?limit=${encodeURIComponent(String(limit))}`,
     {

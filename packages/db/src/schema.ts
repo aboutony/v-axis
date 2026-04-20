@@ -185,7 +185,9 @@ export const userSessions = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [index("user_sessions_user_idx").on(table.userId, table.expiresAt)],
+  (table) => [
+    index("user_sessions_user_idx").on(table.userId, table.expiresAt),
+  ],
 );
 
 export const userActionTokens = pgTable(
@@ -261,7 +263,10 @@ export const categories = pgTable(
       .notNull(),
   },
   (table) => [
-    uniqueIndex("categories_tenant_slot_idx").on(table.tenantId, table.slotNumber),
+    uniqueIndex("categories_tenant_slot_idx").on(
+      table.tenantId,
+      table.slotNumber,
+    ),
   ],
 );
 
@@ -290,8 +295,14 @@ export const entities = pgTable(
       .notNull(),
   },
   (table) => [
-    uniqueIndex("entities_tenant_code_idx").on(table.tenantId, table.entityCode),
-    uniqueIndex("entities_category_name_idx").on(table.categoryId, table.entityName),
+    uniqueIndex("entities_tenant_code_idx").on(
+      table.tenantId,
+      table.entityCode,
+    ),
+    uniqueIndex("entities_category_name_idx").on(
+      table.categoryId,
+      table.entityName,
+    ),
     index("entities_tenant_category_idx").on(table.tenantId, table.categoryId),
   ],
 );
@@ -527,7 +538,9 @@ export const entityRiskScores = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [index("entity_risk_scores_tenant_idx").on(table.tenantId, table.score)],
+  (table) => [
+    index("entity_risk_scores_tenant_idx").on(table.tenantId, table.score),
+  ],
 );
 
 export const connectors = pgTable(
@@ -539,7 +552,9 @@ export const connectors = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     connectorType: connectorTypeEnum("connector_type").notNull(),
     name: varchar("name", { length: 200 }).notNull(),
-    config: jsonb("config").notNull().default(sql`'{}'::jsonb`),
+    config: jsonb("config")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     status: connectorStatusEnum("status").notNull().default("INACTIVE"),
     lastSync: timestamp("last_sync", { withTimezone: true }),
     syncIntervalMinutes: integer("sync_interval_minutes"),
@@ -584,7 +599,9 @@ export const webhooks = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [index("webhooks_tenant_enabled_idx").on(table.tenantId, table.enabled)],
+  (table) => [
+    index("webhooks_tenant_enabled_idx").on(table.tenantId, table.enabled),
+  ],
 );
 
 export const automationJobs = pgTable(
@@ -637,8 +654,63 @@ export const automationJobs = pgTable(
       table.status,
       table.createdAt,
     ),
-    index("automation_jobs_resource_idx").on(table.resourceType, table.resourceId),
+    index("automation_jobs_resource_idx").on(
+      table.resourceType,
+      table.resourceId,
+    ),
     index("automation_jobs_replay_idx").on(table.replayOfId),
+  ],
+);
+
+export const emailTemplateTypeEnum = pgEnum("email_template_type", [
+  "INVITE",
+  "PASSWORD_RESET",
+  "NOTIFICATION",
+  "ESCALATION",
+  "WELCOME",
+]);
+
+export const emailTemplates = pgTable(
+  "email_templates",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    templateType: emailTemplateTypeEnum("template_type").notNull(),
+    name: varchar("name", { length: 200 }).notNull(),
+    subject: varchar("subject", { length: 500 }).notNull(),
+    bodyHtml: text("body_html").notNull(),
+    bodyText: text("body_text").notNull(),
+    variables: jsonb("variables")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    isDefault: boolean("is_default").notNull().default(false),
+    isActive: boolean("is_active").notNull().default(true),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: uuid("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("email_templates_tenant_type_idx").on(
+      table.tenantId,
+      table.templateType,
+    ),
+    uniqueIndex("email_templates_tenant_default_idx").on(
+      table.tenantId,
+      table.templateType,
+      table.isDefault,
+    ),
   ],
 );
 
@@ -657,7 +729,9 @@ export const auditLogs = pgTable(
     resourceId: uuid("resource_id"),
     ipAddress: varchar("ip_address", { length: 45 }),
     userAgent: text("user_agent"),
-    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    metadata: jsonb("metadata")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
