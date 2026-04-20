@@ -1,4 +1,4 @@
 import { lazy } from "react";
 
-const page = lazy(() => import("./AuditExplorerPage"));
-export default page;
+const AuditExplorerPage = lazy(() => import("./AuditExplorerPage"));
+export default AuditExplorerPage;

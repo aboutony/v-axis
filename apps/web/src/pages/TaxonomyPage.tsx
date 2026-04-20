@@ -1,4 +1,4 @@
 import { lazy } from "react";
 
-const page = lazy(() => import("./TaxonomyPage"));
-export default page;
+const TaxonomyPage = lazy(() => import("./TaxonomyPage"));
+export default TaxonomyPage;

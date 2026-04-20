@@ -1,4 +1,4 @@
 import { lazy } from "react";
 
-const page = lazy(() => import("./AccessPage"));
-export default page;
+const AccessPage = lazy(() => import("./AccessPage"));
+export default AccessPage;
