@@ -1,10 +1,12 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { TaxonomyPage } from "./App";
-import "./styles.css";
+// apps/web/src/main.tsx
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App' // We are now importing the default 'App' component
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <TaxonomyPage />
+    <App />
   </React.StrictMode>,
-);
+)
