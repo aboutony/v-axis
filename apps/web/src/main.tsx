@@ -1,12 +1,9 @@
 // apps/web/src/main.tsx
+import { createRoot } from "react-dom/client";
+import App from "./app/App"; // Removed .tsx extension for Vite compatibility
+import "./styles/index.css";
 
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './app/App' // Path aligned to your 'app' folder structure
-import './styles/index.css' // Path aligned to the 'styles' folder you just uploaded
+const rootElement = document.getElementById("root");
+if (!rootElement) throw new Error("Failed to find the root element");
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
+createRoot(rootElement).render(<App />);
