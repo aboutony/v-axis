@@ -1,12 +1,16 @@
 import { lazy } from "react";
 
-export const TaxonomyPage = lazy(() => import("./pages/TaxonomyPage"));
+export const TaxonomyPage = lazy(() => import("./pages/TaxonomyPageContent"));
 export const DocumentRegistryPage = lazy(
-  () => import("./pages/DocumentRegistryPage"),
+  () => import("./pages/DocumentRegistryPageContent"),
 );
 export const AuditExplorerPage = lazy(
-  () => import("./pages/AuditExplorerPage"),
+  () => import("./pages/AuditExplorerPageContent"),
 );
-export const AuthContextPage = lazy(() => import("./pages/AuthContextPage"));
-export const AccessPage = lazy(() => import("./pages/AccessPage"));
-export const ClientAdminPage = lazy(() => import("./pages/ClientAdminPage"));
+export const AuthContextPage = lazy(
+  () => import("./pages/AuthContextPageContent"),
+);
+export const AccessPage = lazy(() => import("./pages/AccessPageContent"));
+export const ClientAdminPage = lazy(
+  () => import("./pages/ClientAdminPageContent"),
+);
