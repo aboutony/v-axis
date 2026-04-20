@@ -1,14 +1,12 @@
 // apps/web/src/App.tsx
-
 import React, { useState } from 'react';
-import { Search, Download, Plus, Minus } from 'lucide-react';
 
-// MASTER WORKFORCE DATA (90 Names / 10 Nations) - Integrated to avoid path errors
+// MASTER DATA: Integrated to ensure zero path errors
 const workforceMap: Record<string, any[]> = {
   "Group Corporate Office": [
     { name: "Majed Al-Fahad", nat: "Saudi", role: "MD", status: "ACTIVE", date: "2028-04-10", badge: "bg-[#1E40AF]", docType: "National ID" },
     { name: "Ahmad Hamad", nat: "Jordan", role: "CFO", status: "EXPIRING SOON", date: "2026-05-12", badge: "bg-[#F43F5E]", docType: "Iqama" },
-    { name: "John Miller", nat: "UK", role: "Strategy", status: "ACTIVE", date: "2027-03-04", badge: "bg-[#1E40AF]", docType: "Iqama" }
+    { name: "Anas Mansour", nat: "Syrian", role: "Legal", status: "ACTIVE", date: "2026-11-20", badge: "bg-[#1E40AF]", docType: "Iqama" }
   ],
   "The Real-Estate Development Company": [
     { name: "Bandar Al-Otaibi", nat: "Saudi", role: "PM", status: "EXPIRING SOON", date: "2026-06-20", badge: "bg-[#F43F5E]", docType: "National ID" },
@@ -23,7 +21,6 @@ const workforceMap: Record<string, any[]> = {
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState('Group Corporate Office');
-  const [searchQuery, setSearchQuery] = useState('');
 
   const companies = [
     "Group Corporate Office", "The Real-Estate Development Company", "The Retail Company",
@@ -40,25 +37,15 @@ export default function App() {
   return (
     <div className={`min-h-screen transition-all duration-700 font-sans p-12 ${isDarkMode ? 'bg-[#020617]' : 'bg-[#F8FAFC]'}`}>
       
-      {/* HEADER: NEO-TACTILE */}
+      {/* HEADER */}
       <header className="max-w-[1800px] mx-auto mb-16 flex justify-between items-center">
         <div>
-          <h1 className={`text-5xl font-black tracking-tighter uppercase leading-none italic ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>V-AXIS</h1>
+          <h1 className={`text-6xl font-black tracking-tighter uppercase leading-none italic ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>V-AXIS</h1>
           <p className="text-[#10B981] text-xs font-black tracking-[0.5em] uppercase mt-2">Administrative Intelligence</p>
         </div>
 
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-4 px-8 py-4 rounded-3xl" style={{ boxShadow: neoShadowRecessed }}>
-             <Search className="w-5 h-5 text-slate-400" />
-             <input 
-              type="text" 
-              placeholder="Search..." 
-              className="bg-transparent border-none outline-none text-sm font-bold w-64"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-             />
-          </div>
-          <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-transform hover:scale-110" style={{ backgroundColor: isDarkMode ? '#1e293b' : '#ffffff' }}>
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-all hover:scale-110" style={{ backgroundColor: isDarkMode ? '#1e293b' : '#ffffff' }}>
             {isDarkMode ? '☀️' : '🌙'}
           </button>
         </div>
@@ -67,7 +54,7 @@ export default function App() {
       <main className="max-w-[1800px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12">
         
         {/* ENTITY VAULT */}
-        <div className={`p-12 rounded-[4rem] transition-all duration-700`} style={{ boxShadow: neoShadowRecessed }}>
+        <div className="p-12 rounded-[4rem] transition-all duration-700" style={{ boxShadow: neoShadowRecessed }}>
            <div className="flex justify-between items-center mb-12">
               <h3 className={`text-3xl font-black italic uppercase ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Entity Vault</h3>
               <select 
@@ -79,13 +66,15 @@ export default function App() {
               </select>
            </div>
            
-           <div className="space-y-8 opacity-60">
-              <p className="text-sm font-medium italic">Vault content synchronization in progress...</p>
+           <div className="space-y-6 opacity-40">
+              <div className="p-6 rounded-2xl border border-dashed border-slate-300 text-center text-sm font-bold">
+                 Select subsidiary to sync entity documents...
+              </div>
            </div>
         </div>
 
         {/* WORKFORCE ASSET PORTAL */}
-        <div className={`p-12 rounded-[4rem] transition-all duration-700`} style={{ boxShadow: neoShadowElevated, backgroundColor: isDarkMode ? '#0f172a' : '#ffffff' }}>
+        <div className="p-12 rounded-[4rem] transition-all duration-700" style={{ boxShadow: neoShadowElevated, backgroundColor: isDarkMode ? '#0f172a' : '#ffffff' }}>
           <div className="flex justify-between items-center mb-12">
             <h3 className={`text-3xl font-black italic uppercase ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Workforce Portal</h3>
             <div className="flex items-center gap-2 bg-[#10B981]/10 px-4 py-2 rounded-full border border-[#10B981]/20">
