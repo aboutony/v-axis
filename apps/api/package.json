@@ -8,7 +8,7 @@
     "dev:worker": "tsx watch src/worker.ts",
     "vault:init": "mkdir -p ../../storage/vault",
     "build": "tsup --config tsup.config.ts",
-    "start": "node dist/index.js",
+    "start": "node dist/server.js",
     "start:worker": "node dist/worker.js",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests"
