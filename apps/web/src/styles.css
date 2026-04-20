@@ -22,9 +22,19 @@
   body,
   #root {
     @apply min-h-screen w-full m-0 p-0 overflow-x-hidden;
-    background-color: #f0f4f8; /* Lighter background */
-    color: #1e293b;
+    background-color: #f8fafc; /* Light grey background */
+    color: #334155;
     font-family: "Space Grotesk", sans-serif;
+  }
+}
+
+/* Content Layout */
+@layer utilities {
+  .content-wrapper {
+    @apply min-h-screen flex items-center justify-center p-8;
+  }
+  .content-card {
+    @apply bg-white rounded-lg shadow-lg p-8 max-w-2xl w-full;
   }
 }
 
@@ -35,7 +45,7 @@
   }
 }
 
-/* Custom Scrollbar for that Premium Feel */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
 }
