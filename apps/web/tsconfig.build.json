@@ -3,5 +3,5 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "exclude": ["src/services", "src/controller", "src/lib"]
+  "exclude": ["node_modules", "src/services", "src/controller", "src/lib"]
 }
