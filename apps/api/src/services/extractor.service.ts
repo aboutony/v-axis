@@ -1,7 +1,6 @@
 // apps/api/src/services/extractor.service.ts
 
 import { createWorker } from 'tesseract.js'; // Standard 2026 High-Fidelity OCR
-import { parseISO, isValid } from 'date-fns';
 
 interface ExtractedMetadata {
   detectedType: string;
@@ -45,8 +44,12 @@ export const processDocumentMetadata = async (fileBuffer: Buffer): Promise<Extra
 function normalizeDate(dateStr: string): string {
   // Logic to handle DD-MM-YYYY vs YYYY-MM-DD
   const parts = dateStr.split('-');
-  if (parts[0].length === 2) {
-    return `${parts[2]}-${parts[1]}-${parts[0]}`; // Convert to ISO
+  const first = parts[0];
+  const second = parts[1];
+  const third = parts[2];
+
+  if (first && second && third && first.length === 2) {
+    return `${third}-${second}-${first}`; // Convert to ISO
   }
   return dateStr;
 }

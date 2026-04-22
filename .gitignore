@@ -14,3 +14,5 @@ apps/web/dist
 apps/api/dist
 infra/postgres-data
 .data
+
+.vercel

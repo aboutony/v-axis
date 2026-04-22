@@ -1,55 +1,77 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 @theme {
-  /* Vivid Saudi Palette */
-  --color-saudi-emerald: #10b981;
-  --color-saudi-teal: #0d9488;
-  --color-saudi-cyan: #0891b2;
-
-  /* Cinematic Surfaces */
-  --background-image-vivid-hero: linear-gradient(
-    to bottom right,
-    #064e3b,
-    #0d9488,
-    #0891b2
-  );
-  --radius-vaxis: 2rem;
+  --color-background: #f8fafc;
+  --color-foreground: #0f172a;
+  --color-primary: #10b981;
+  --color-muted-foreground: #64748b;
+  --color-destructive: #f43f5e;
 }
 
-/* Base Reset */
+:root {
+  --shadow-elevated: 10px 10px 20px rgba(209, 217, 230, 0.9),
+    -10px -10px 20px rgba(255, 255, 255, 0.9);
+  --shadow-recessed: inset 5px 5px 10px rgba(209, 217, 230, 0.8),
+    inset -5px -5px 10px rgba(255, 255, 255, 0.92);
+  --shadow-soft: 16px 16px 32px rgba(209, 217, 230, 0.65),
+    -16px -16px 32px rgba(255, 255, 255, 0.85);
+  --font-display: "Playfair Display", serif;
+  --font-data: "Inter", sans-serif;
+}
+
+.dark {
+  --shadow-elevated: 12px 12px 24px rgba(0, 0, 0, 0.45),
+    -12px -12px 24px rgba(15, 23, 42, 0.45);
+  --shadow-recessed: inset 5px 5px 10px rgba(0, 0, 0, 0.45),
+    inset -5px -5px 10px rgba(15, 23, 42, 0.3);
+  --shadow-soft: 16px 16px 32px rgba(0, 0, 0, 0.4),
+    -16px -16px 32px rgba(15, 23, 42, 0.35);
+}
+
 @layer base {
-  html,
+  html {
+    background:
+      radial-gradient(circle at top left, rgba(16, 185, 129, 0.12), transparent 32%),
+      radial-gradient(circle at top right, rgba(30, 64, 175, 0.1), transparent 28%),
+      #f8fafc;
+    color: #0f172a;
+    font-family: var(--font-data);
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: transparent;
+    color: inherit;
+  }
+
   body,
+  button,
+  input,
+  select {
+    font-family: var(--font-data);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
   #root {
-    @apply min-h-screen w-full m-0 p-0 overflow-x-hidden;
-    background-color: #f8fafc; /* Light grey background */
-    color: #334155;
-    font-family: "Space Grotesk", sans-serif;
+    min-height: 100vh;
   }
-}
 
-/* Content Layout */
-@layer utilities {
-  .content-wrapper {
-    @apply min-h-screen flex items-center justify-center p-8;
+  .dark html,
+  html.dark {
+    background:
+      radial-gradient(circle at top left, rgba(16, 185, 129, 0.1), transparent 26%),
+      radial-gradient(circle at top right, rgba(30, 64, 175, 0.12), transparent 24%),
+      #020617;
+    color: #f8fafc;
   }
-  .content-card {
-    @apply bg-white rounded-lg shadow-lg p-8 max-w-2xl w-full;
-  }
-}
 
-/* Glassmorphism Classes */
-@layer components {
-  .vaxis-glass {
-    @apply backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl;
+  .dark body,
+  html.dark body {
+    color: #f8fafc;
   }
-}
-
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-thumb {
-  background: #10b981;
-  border-radius: 10px;
 }

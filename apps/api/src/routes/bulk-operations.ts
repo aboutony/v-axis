@@ -59,6 +59,10 @@ const entityCsvColumns = [
   { key: "isActive", label: "Is Active (true/false)" },
 ];
 
+function getIsoDatePrefix() {
+  return new Date().toISOString().split("T")[0] ?? new Date().toISOString();
+}
+
 // Helper to safely get record value
 function getRecordValue(
   record: Record<string, string> | undefined,
@@ -522,8 +526,8 @@ export const bulkOperationsRoutes: FastifyPluginAsync = async (fastify) => {
     // Helper to format date
     const formatDate = (date: any): string => {
       if (!date) return "";
-      if (date instanceof Date) return date.toISOString().split("T")[0];
-      if (typeof date === "string") return date.split("T")[0];
+      if (date instanceof Date) return date.toISOString().split("T")[0] ?? "";
+      if (typeof date === "string") return date.split("T")[0] ?? "";
       return "";
     };
 
@@ -570,7 +574,7 @@ export const bulkOperationsRoutes: FastifyPluginAsync = async (fastify) => {
     reply.header("Content-Type", "text/csv; charset=utf-8");
     reply.header(
       "Content-Disposition",
-      `attachment; filename="vaxis-documents-export-${new Date().toISOString().split("T")[0]}.csv"`,
+      `attachment; filename="vaxis-documents-export-${getIsoDatePrefix()}.csv"`,
     );
     return reply.send(csv);
   });
@@ -631,7 +635,7 @@ export const bulkOperationsRoutes: FastifyPluginAsync = async (fastify) => {
     reply.header("Content-Type", "text/csv; charset=utf-8");
     reply.header(
       "Content-Disposition",
-      `attachment; filename="vaxis-entities-export-${new Date().toISOString().split("T")[0]}.csv"`,
+      `attachment; filename="vaxis-entities-export-${getIsoDatePrefix()}.csv"`,
     );
     return reply.send(csv);
   });
