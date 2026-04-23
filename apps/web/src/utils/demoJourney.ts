@@ -64,7 +64,14 @@ export type DemoNotification = {
   severity: Priority;
   relatedType: "document" | "employee" | "task";
   relatedId: string;
-  status: "new" | "acknowledged";
+  status: "new" | "acknowledged" | "escalated" | "resolved";
+  latestUpdate: string;
+  channels: {
+    whatsapp: "sent";
+    email: "sent";
+    sms: "sent";
+    inApp: "sent";
+  };
 };
 
 export type DemoActivity = {
@@ -366,6 +373,13 @@ export function createDemoState(scenario: ScenarioKey): DemoState {
       relatedType: "document",
       relatedId: "doc-baladiyah-retail",
       status: "new",
+      latestUpdate: "Alert delivered by WhatsApp, email, SMS, and in-app bell.",
+      channels: {
+        whatsapp: "sent",
+        email: "sent",
+        sms: "sent",
+        inApp: "sent",
+      },
     },
     {
       id: "note-workforce",
@@ -376,6 +390,13 @@ export function createDemoState(scenario: ScenarioKey): DemoState {
       relatedType: "employee",
       relatedId: "emp-retail-ops",
       status: "new",
+      latestUpdate: "Stakeholders were alerted across all delivery channels.",
+      channels: {
+        whatsapp: "sent",
+        email: "sent",
+        sms: "sent",
+        inApp: "sent",
+      },
     },
   ];
 

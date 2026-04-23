@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Bell,
+  BellRing,
   Briefcase,
   Building2,
   CheckCircle2,
@@ -10,8 +11,11 @@ import {
   Download,
   FileText,
   Landmark,
+  Mail,
+  MessageCircleMore,
   Moon,
   ShieldCheck,
+  Smartphone,
   Sun,
   Users,
 } from "lucide-react";
@@ -416,6 +420,8 @@ function addNotification(
   severity: Priority,
   relatedType: DemoNotification["relatedType"],
   relatedId: string,
+  status: DemoNotification["status"] = "new",
+  latestUpdate = "Alert delivered by WhatsApp, email, SMS, and in-app bell.",
 ) {
   const notification: DemoNotification = {
     id: `note-${crypto.randomUUID()}`,
@@ -424,7 +430,14 @@ function addNotification(
     severity,
     relatedType,
     relatedId,
-    status: "new",
+    status,
+    latestUpdate,
+    channels: {
+      whatsapp: "sent",
+      email: "sent",
+      sms: "sent",
+      inApp: "sent",
+    },
   };
 
   return {
@@ -535,6 +548,22 @@ function PanelButton(props: {
   );
 }
 
+function getNotificationStatusTone(
+  status: DemoNotification["status"],
+  isDarkMode: boolean,
+) {
+  switch (status) {
+    case "escalated":
+      return isDarkMode ? "bg-rose-400/20 text-rose-100" : "bg-rose-100 text-rose-700";
+    case "resolved":
+      return isDarkMode ? "bg-emerald-400/20 text-emerald-100" : "bg-emerald-100 text-emerald-700";
+    case "acknowledged":
+      return isDarkMode ? "bg-sky-400/20 text-sky-100" : "bg-sky-100 text-sky-700";
+    default:
+      return isDarkMode ? "bg-amber-400/20 text-amber-100" : "bg-amber-100 text-amber-700";
+  }
+}
+
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [locale, setLocale] = useState<Locale>("en");
@@ -544,6 +573,7 @@ function App() {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>("doc-baladiyah-retail");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("emp-retail-ops");
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
+  const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
   const [demoState, setDemoState] = useState<DemoState>(() => createDemoState("warning"));
   const isArabic = locale === "ar";
   const t = copy[locale];
@@ -831,6 +861,16 @@ function App() {
       );
     });
 
+    pushStatusNotification(
+      "Document resolved",
+      `${selectedDocument?.title ?? "Document"} has been renewed and all stakeholders received the latest resolved status.`,
+      "medium",
+      "resolved",
+      "document",
+      documentId,
+      "Resolved status sent by WhatsApp, email, SMS, and in-app bell.",
+    );
+
     announce(
       locale === "ar"
         ? "تم رفع المستند المجدد وإغلاق المهمة وتحديث سجل التدقيق."
@@ -867,6 +907,16 @@ function App() {
       );
     });
 
+    pushStatusNotification(
+      "Workforce file resolved",
+      `${selectedEmployee?.employeeName ?? "Employee"} is compliant again and all channels were updated with the resolved status.`,
+      "medium",
+      "resolved",
+      "employee",
+      employeeId,
+      "Resolved status sent by WhatsApp, email, SMS, and in-app bell.",
+    );
+
     announce(
       locale === "ar"
         ? "تم تجديد الملف القانوني للقوى العاملة وانعكس ذلك عبر المنصة."
@@ -897,6 +947,8 @@ function App() {
         "critical",
         "task",
         task.id,
+        "escalated",
+        "Escalation sent by WhatsApp, email, SMS, and in-app bell.",
       );
 
       return appendActivity(
@@ -919,11 +971,39 @@ function App() {
       ...current,
       notifications: current.notifications.map((notification) =>
         notification.id === notificationId
-          ? { ...notification, status: "acknowledged" }
+          ? {
+              ...notification,
+              status: "acknowledged",
+              latestUpdate:
+                "Alert acknowledged. WhatsApp, email, SMS, and in-app feeds now reflect the latest status.",
+            }
           : notification,
       ),
     }));
     announce(locale === "ar" ? "تم الإقرار بالتنبيه." : "Notification acknowledged.");
+  }
+
+  function pushStatusNotification(
+    title: string,
+    message: string,
+    severity: Priority,
+    status: DemoNotification["status"],
+    relatedType: DemoNotification["relatedType"],
+    relatedId: string,
+    latestUpdate: string,
+  ) {
+    setDemoState((current) =>
+      addNotification(
+        current,
+        title,
+        message,
+        severity,
+        relatedType,
+        relatedId,
+        status,
+        latestUpdate,
+      ),
+    );
   }
 
   function exportDemoReport() {
@@ -985,8 +1065,9 @@ function App() {
 
   const openTasks = demoState.tasks.filter((task) => task.status !== "done");
   const unresolvedNotifications = demoState.notifications.filter(
-    (notification) => notification.status === "new",
+    (notification) => notification.status === "new" || notification.status === "escalated",
   );
+  const notificationBadgeCount = unresolvedNotifications.length;
   const localizeTaskTitle = (value: string) => {
     if (locale === "en") {
       return value;
@@ -1150,6 +1231,23 @@ function App() {
             <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-end">
               <button
                 type="button"
+                onClick={() => setIsNotificationCenterOpen((value) => !value)}
+                className={`relative inline-flex items-center justify-center rounded-[1.5rem] border p-3 shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.04] ${utilityButtonClass}`}
+                aria-label={isArabic ? "مركز التنبيهات" : "Notification center"}
+              >
+                {notificationBadgeCount > 0 ? (
+                  <BellRing className="h-5 w-5 text-primary" />
+                ) : (
+                  <Bell className="h-5 w-5 text-primary" />
+                )}
+                {notificationBadgeCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-rose-600 px-1.5 text-xs font-semibold text-white">
+                    {notificationBadgeCount}
+                  </span>
+                ) : null}
+              </button>
+              <button
+                type="button"
                 onClick={() => setLocale((current) => (current === "en" ? "ar" : "en"))}
                 className={`inline-flex items-center justify-center gap-2 rounded-[1.5rem] border px-5 py-3 text-sm font-medium shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.02] ${utilityButtonClass}`}
               >
@@ -1180,6 +1278,82 @@ function App() {
               </button>
             </div>
           </div>
+
+          {isNotificationCenterOpen ? (
+            <div className={`mt-5 rounded-[1.75rem] border p-5 shadow-[var(--shadow-elevated)] ${solidCardClass}`}>
+              <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    {isArabic ? "مركز التنبيهات متعدد القنوات" : "Multi-channel Notification Center"}
+                  </p>
+                  <h3 className="mt-1 text-lg font-semibold">
+                    {isArabic ? "واتساب، بريد إلكتروني، رسالة نصية، وجرس المنصة" : "WhatsApp, Email, SMS, and In-App Bell"}
+                  </h3>
+                </div>
+                <div className="rounded-full bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                  {notificationBadgeCount} {isArabic ? "بحاجة إلى متابعة" : "need attention"}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {demoState.notifications.slice(0, 6).map((notification) => (
+                  <div
+                    key={notification.id}
+                    className={`rounded-[1.25rem] border p-4 ${isDarkMode ? "border-slate-700 bg-slate-950/65" : "border-slate-200 bg-slate-50"}`}
+                  >
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold">
+                            {localizeNotificationTitle(notification.title)}
+                          </p>
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${getNotificationStatusTone(
+                              notification.status,
+                              isDarkMode,
+                            )}`}
+                          >
+                            {notification.status === "resolved"
+                              ? isArabic ? "تم الحل" : "resolved"
+                              : notification.status === "escalated"
+                                ? isArabic ? "تم التصعيد" : "escalated"
+                                : notification.status === "acknowledged"
+                                  ? isArabic ? "تم الإقرار" : "acknowledged"
+                                  : isArabic ? "جديد" : "new"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {localizeNotificationMessage(notification.message)}
+                        </p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {isArabic ? "آخر تحديث:" : "Latest status:"} {notification.latestUpdate}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 text-xs font-medium">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-3 py-1 text-emerald-500">
+                          <MessageCircleMore className="h-3.5 w-3.5" />
+                          WhatsApp
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-3 py-1 text-sky-500">
+                          <Mail className="h-3.5 w-3.5" />
+                          Email
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-3 py-1 text-amber-500">
+                          <Smartphone className="h-3.5 w-3.5" />
+                          SMS
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-primary">
+                          <Bell className="h-3.5 w-3.5" />
+                          {isArabic ? "جرس المنصة" : "In-app"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
             <div
