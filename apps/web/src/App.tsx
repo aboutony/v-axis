@@ -205,7 +205,7 @@ function App() {
     setSelectedDocumentId("doc-baladiyah-retail");
     setSelectedEmployeeId("emp-retail-ops");
     setModule("dashboard");
-    setFlashMessage(`Demo reset to ${scenario.toUpperCase()} scenario.`);
+    setFlashMessage(`Workspace reset to ${scenario.toUpperCase()} scenario.`);
   }, [scenario]);
 
   const subsidiaryDocuments = useMemo(
@@ -530,7 +530,7 @@ function App() {
 
   function exportDemoReport() {
     const content = buildExportSummary(demoState, selectedSubsidiary, scenario);
-    triggerDownload("v-axis-demo-summary.txt", content);
+    triggerDownload("v-axis-operational-summary.txt", content);
     setDemoState((current) =>
       appendActivity(
         current,
@@ -563,8 +563,8 @@ function App() {
                 Operational Continuity Journey
               </p>
               <p className="mt-4 max-w-2xl text-sm text-muted-foreground">
-                This demo is now a connected story: entity readiness, workforce legal
-                files, actions, and audit outcomes all change together.
+                Entity readiness, workforce legal files, actions, and audit
+                outcomes move together in one connected operating system.
               </p>
             </div>
 
@@ -575,7 +575,7 @@ function App() {
                 className="inline-flex items-center justify-center gap-2 rounded-[1.5rem] border border-white/45 bg-background/80 px-5 py-3 text-sm font-medium shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.02]"
               >
                 <Download className="h-4 w-4 text-primary" />
-                Export Demo Story
+                Export Operational Summary
               </button>
 
               <button
@@ -663,7 +663,7 @@ function App() {
                 }`}
               >
                 <div className="text-xs uppercase tracking-[0.18em] opacity-70">
-                  Demo Surface
+                  Platform Surface
                 </div>
                 <div className="mt-1 text-sm font-semibold">{moduleLabels[key]}</div>
               </button>
@@ -1089,7 +1089,7 @@ function App() {
             <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
               <Surface
                 title="Action Center"
-                description="This turns reminders, assignments, and escalations into the visible operating layer for the demo."
+                description="This turns reminders, assignments, and escalations into the visible operating layer of the platform."
               >
                 <div className="space-y-4">
                   {openTasks.map((task) => (
@@ -1152,7 +1152,7 @@ function App() {
 
               <Surface
                 title="Notification Queue"
-                description="Each reminder or escalation feeds a visible queue, giving the demo a sense of momentum and consequence."
+                description="Each reminder or escalation feeds a visible queue, giving the platform momentum, accountability, and consequence."
               >
                 <div className="space-y-4">
                   {demoState.notifications.map((notification) => (
@@ -1201,7 +1201,7 @@ function App() {
             <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
               <Surface
                 title="Governance Trail"
-                description="This closes the story: every action taken in the demo leaves a visible record and becomes exportable for management."
+                description="This closes the loop: every action taken in the platform leaves a visible record and becomes exportable for management."
                 action={
                   <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
                     <ShieldCheck className="h-4 w-4" />
@@ -1236,14 +1236,14 @@ function App() {
 
               <Surface
                 title="Narrative Outcomes"
-                description="These are the talking points the client should leave with after watching the demo journey."
+                description="These are the outcomes the client should immediately understand after reviewing the platform journey."
               >
                 <div className="space-y-4">
                   {[
                     "Entity readiness is not isolated. Baladiyah, CR, ZATCA, GOSI, and Labor Office File sit in one shared operating picture.",
                     "Workforce legal records are linked to the subsidiary story, not treated as a separate HR spreadsheet.",
                     "Every action creates visible consequences: tasks, notifications, and audit events.",
-                    "The platform can stay seeded and demo-friendly while still feeling operational and connected.",
+                    "The platform can stay seeded with live-looking operational context while still feeling fully connected and production-ready.",
                   ].map((line) => (
                     <div
                       key={line}

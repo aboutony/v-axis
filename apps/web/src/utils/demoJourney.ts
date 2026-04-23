@@ -93,7 +93,7 @@ export const scenarioDescriptions: Record<ScenarioKey, string> = {
   stable:
     "Operationally stable. Everything is clickable, but most records are healthy and the journey focuses on visibility.",
   warning:
-    "Best client demo mode. Baladiyah, ZATCA, and workforce documents need coordinated action.",
+    "Balanced operational tension. Baladiyah, ZATCA, and workforce documents need coordinated action.",
   critical:
     "Escalation mode. Multiple items are overdue and the platform shows ownership, reminders, and recovery.",
 };
@@ -384,7 +384,7 @@ export function createDemoState(scenario: ScenarioKey): DemoState {
       id: "act-1",
       timestamp: `${baseDate}T08:15:00.000Z`,
       title: "Scenario initialized",
-      detail: `Demo loaded in ${scenario.toUpperCase()} mode.`,
+      detail: `Workspace loaded in ${scenario.toUpperCase()} mode.`,
       module: "dashboard",
     },
     {
@@ -433,7 +433,7 @@ export function buildExportSummary(
   });
 
   return [
-    `V-AXIS Demo Summary`,
+    `V-AXIS Operational Summary`,
     `Scenario: ${scenario}`,
     `Subsidiary: ${subsidiary}`,
     "",
