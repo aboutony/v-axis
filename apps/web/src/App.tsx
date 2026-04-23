@@ -17,10 +17,8 @@ import {
 } from "lucide-react";
 
 import {
-  buildExportSummary,
   countStatus,
   createDemoState,
-  scenarioDescriptions,
   subsidiaries,
   type DemoActivity,
   type DemoNotification,
@@ -42,12 +40,353 @@ const moduleLabels: Record<ModuleKey, string> = {
   "governance-trail": "Governance Trail",
 };
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("en-GB", {
+type Locale = "en" | "ar";
+
+const moduleLabelsByLocale: Record<Locale, Record<ModuleKey, string>> = {
+  en: moduleLabels,
+  ar: {
+    dashboard: "مركز القيادة",
+    "entity-vault": "خزنة الكيانات",
+    workforce: "بوابة القوى العاملة",
+    "action-center": "مركز الإجراءات",
+    "governance-trail": "سجل الحوكمة",
+  },
+};
+
+const scenarioLabels: Record<Locale, Record<ScenarioKey, string>> = {
+  en: {
+    stable: "Stable",
+    warning: "Warning",
+    critical: "Critical",
+  },
+  ar: {
+    stable: "مستقر",
+    warning: "تحذير",
+    critical: "حرج",
+  },
+};
+
+const scenarioDescriptionsByLocale: Record<Locale, Record<ScenarioKey, string>> = {
+  en: {
+    stable:
+      "Operationally stable. Everything is clickable, but most records are healthy and the journey focuses on visibility.",
+    warning:
+      "Balanced operational tension. Baladiyah, ZATCA, and workforce documents need coordinated action.",
+    critical:
+      "Escalation mode. Multiple items are overdue and the platform shows ownership, reminders, and recovery.",
+  },
+  ar: {
+    stable:
+      "الوضع التشغيلي مستقر. كل شيء تفاعلي، ومعظم السجلات سليمة، والتركيز هنا على الوضوح والمتابعة.",
+    warning:
+      "هناك توتر تشغيلي متوازن. مستندات البلدية والزكاة والضرائب والقوى العاملة تحتاج إلى إجراء منسق.",
+    critical:
+      "وضع تصعيد. توجد عناصر متعددة متأخرة، وتُظهر المنصة الملكية والتنبيهات ومسار المعالجة بوضوح.",
+  },
+};
+
+const copy = {
+  en: {
+    exportSummary: "Export Operational Summary",
+    darkMode: "Dark mode",
+    lightMode: "Light mode",
+    heroEyebrow: "Operational Continuity Journey",
+    heroDescription:
+      "Entity readiness, workforce legal files, actions, and audit outcomes move together in one connected operating system.",
+    activeStoryScenario: "Active Story Scenario",
+    activeSubsidiary: "Active Subsidiary",
+    platformSurface: "Platform Surface",
+    commandCenterDescription:
+      "The command center starts the story, then routes the user into the right operating surface. Every card below is alive.",
+    activeAlerts: "active alerts",
+    openSurface: "Open surface",
+    customerUseCases: "Customer-led Use Cases",
+    currentStoryTrigger: "Current Story Trigger",
+    triggerDescription:
+      "For {subsidiary}, the platform is strongest when it shows how entity readiness and workforce legal files move together.",
+    entityVaultDescription:
+      "This is where CR, ZATCA, Baladiyah, GOSI, Salamah, and related operating records become a real workflow rather than a dead card.",
+    documentDetailDescription:
+      "The detail pane is the heart of the story. Actions here update the Action Center, Governance Trail, and linked workforce records.",
+    authority: "Authority",
+    documentNo: "Document No.",
+    issueDate: "Issue Date",
+    expiryDate: "Expiry Date",
+    whatThisProves: "What This Story Proves",
+    linkedWorkforceRecords: "Linked Workforce Records",
+    assignOwner: "Assign Owner",
+    queueReminder: "Queue Reminder",
+    startRenewal: "Start Renewal",
+    uploadRenewal: "Upload Renewal",
+    workforcePortalDescription:
+      "Workforce legal documents are showcased as an operational journey, connected back to Baladiyah, CR, ZATCA, and government-facing entity records.",
+    workforceDetailDescription:
+      "Actions here create a visible bridge between employee legal files and the entity records needed for real-world operations.",
+    iqamaNo: "Iqama No.",
+    iqamaExpiry: "Iqama Expiry",
+    permitNo: "Permit No.",
+    permitExpiry: "Permit Expiry",
+    assignHrOwner: "Assign HR Owner",
+    uploadNewCopy: "Upload New Copy",
+    linkedEntityDependencies: "Linked Entity Dependencies",
+    actionCenterDescription:
+      "This turns reminders, assignments, and escalations into the visible operating layer of the platform.",
+    notificationQueueDescription:
+      "Each reminder or escalation feeds a visible queue, giving the platform momentum, accountability, and consequence.",
+    governanceTrailDescription:
+      "This closes the loop: every action taken in the platform leaves a visible record and becomes exportable for management.",
+    auditReady: "audit-ready",
+    narrativeOutcomes: "Narrative Outcomes",
+    narrativeDescription:
+      "These are the outcomes the client should immediately understand after reviewing the platform journey.",
+    acknowledge: "Acknowledge",
+    acknowledged: "Acknowledged",
+    escalate: "Escalate",
+    openRelatedRecord: "Open Related Record",
+    markComplete: "Mark Complete",
+    ownerLabel: "Owner {owner}",
+    ownerLowerLabel: "owner {owner}",
+    expiresLabel: "Expires {date}",
+    iqamaDateLabel: "Iqama {date}",
+    dueLabel: "Owner {owner} · due {date}",
+    routedFrom: "Routed from {module}",
+    municipalityRenewalJourney: "Municipality Renewal Journey",
+    municipalityRenewalDescription:
+      "Show how Baladiyah risk moves from dashboard insight to owner assignment, reminder, and completed renewal.",
+    crReadiness: "CR / ZATCA Operating Readiness",
+    crReadinessDescription:
+      "Show how business continuity depends on current CR and tax records with accountable owners.",
+    workforceJourney: "Workforce Legal File Journey",
+    workforceJourneyDescription:
+      "Show how expiring iqama and permit records connect back to the subsidiary's operating posture.",
+    workspaceReset: "Workspace reset to {scenario} scenario.",
+    exportFilename: "v-axis-operational-summary.txt",
+    languageShort: "EN",
+    languageOther: "AR",
+  },
+  ar: {
+    exportSummary: "تصدير الملخص التشغيلي",
+    darkMode: "الوضع الداكن",
+    lightMode: "الوضع الفاتح",
+    heroEyebrow: "رحلة استمرارية التشغيل",
+    heroDescription:
+      "جاهزية الكيان، وملفات القوى العاملة القانونية، والإجراءات، ومخرجات التدقيق تتحرك معًا داخل نظام تشغيلي واحد مترابط.",
+    activeStoryScenario: "سيناريو القصة الحالي",
+    activeSubsidiary: "الشركة التابعة الحالية",
+    platformSurface: "واجهة المنصة",
+    commandCenterDescription:
+      "يبدأ مركز القيادة القصة ثم يوجّه المستخدم إلى الواجهة التشغيلية المناسبة. كل بطاقة أدناه تفاعلية.",
+    activeAlerts: "تنبيهات نشطة",
+    openSurface: "فتح الواجهة",
+    customerUseCases: "حالات استخدام موجهة للعميل",
+    currentStoryTrigger: "محرك القصة الحالي",
+    triggerDescription:
+      "بالنسبة إلى {subsidiary}، تكون المنصة في أفضل حالاتها عندما تُظهر كيف تتحرك جاهزية الكيان وملفات القوى العاملة القانونية معًا.",
+    entityVaultDescription:
+      "هنا تتحول السجلات التشغيلية مثل السجل التجاري والزكاة والبلدية والتأمينات وسلامة إلى سير عمل فعلي بدلًا من بطاقات جامدة.",
+    documentDetailDescription:
+      "لوحة التفاصيل هي قلب القصة. الإجراءات هنا تُحدّث مركز الإجراءات، وسجل الحوكمة، وسجلات القوى العاملة المرتبطة.",
+    authority: "الجهة",
+    documentNo: "رقم المستند",
+    issueDate: "تاريخ الإصدار",
+    expiryDate: "تاريخ الانتهاء",
+    whatThisProves: "ما الذي تثبته هذه القصة",
+    linkedWorkforceRecords: "سجلات القوى العاملة المرتبطة",
+    assignOwner: "تعيين المسؤول",
+    queueReminder: "إضافة تذكير",
+    startRenewal: "بدء التجديد",
+    uploadRenewal: "رفع التجديد",
+    workforcePortalDescription:
+      "تُعرض المستندات القانونية للقوى العاملة كرحلة تشغيلية متصلة بسجلات البلدية والسجل التجاري والزكاة والضرائب والجهات الحكومية.",
+    workforceDetailDescription:
+      "الإجراءات هنا تنشئ رابطًا واضحًا بين ملفات الموظف القانونية وسجلات الكيان المطلوبة للتشغيل الفعلي.",
+    iqamaNo: "رقم الإقامة",
+    iqamaExpiry: "انتهاء الإقامة",
+    permitNo: "رقم تصريح العمل",
+    permitExpiry: "انتهاء تصريح العمل",
+    assignHrOwner: "تعيين مسؤول الموارد البشرية",
+    uploadNewCopy: "رفع نسخة جديدة",
+    linkedEntityDependencies: "الارتباطات الكيانية",
+    actionCenterDescription:
+      "يحوّل هذا القسم التذكيرات والتكليفات والتصعيدات إلى طبقة تشغيلية مرئية داخل المنصة.",
+    notificationQueueDescription:
+      "كل تذكير أو تصعيد يغذي قائمة مرئية تمنح المنصة زخمًا ومساءلةً ونتائج واضحة.",
+    governanceTrailDescription:
+      "هنا تُغلق الحلقة: كل إجراء داخل المنصة يترك سجلًا مرئيًا ويمكن تصديره للإدارة.",
+    auditReady: "جاهز للتدقيق",
+    narrativeOutcomes: "المخرجات الرئيسية",
+    narrativeDescription:
+      "هذه هي المخرجات التي يجب أن يفهمها العميل مباشرة بعد استعراض رحلة المنصة.",
+    acknowledge: "إقرار",
+    acknowledged: "تم الإقرار",
+    escalate: "تصعيد",
+    openRelatedRecord: "فتح السجل المرتبط",
+    markComplete: "وضع كمكتمل",
+    ownerLabel: "المسؤول {owner}",
+    ownerLowerLabel: "المسؤول {owner}",
+    expiresLabel: "ينتهي {date}",
+    iqamaDateLabel: "الإقامة {date}",
+    dueLabel: "المسؤول {owner} · الاستحقاق {date}",
+    routedFrom: "قادمة من {module}",
+    municipalityRenewalJourney: "رحلة تجديد البلدية",
+    municipalityRenewalDescription:
+      "اعرض كيف تنتقل مخاطرة البلدية من مؤشر لوحة التحكم إلى تعيين المسؤول والتذكير ثم إكمال التجديد.",
+    crReadiness: "جاهزية السجل التجاري والزكاة",
+    crReadinessDescription:
+      "اعرض كيف تعتمد استمرارية العمل على حداثة السجل التجاري والسجلات الضريبية مع وجود مسؤول واضح.",
+    workforceJourney: "رحلة الملف القانوني للقوى العاملة",
+    workforceJourneyDescription:
+      "اعرض كيف ترتبط الإقامات والتصاريح التي تقترب من الانتهاء بالوضع التشغيلي للشركة التابعة.",
+    workspaceReset: "تمت إعادة ضبط مساحة العمل إلى سيناريو {scenario}.",
+    exportFilename: "v-axis-operational-summary-ar.txt",
+    languageShort: "AR",
+    languageOther: "EN",
+  },
+} as const;
+
+const localizedValues = {
+  subsidiary: {
+    "Zedan Group HQ": "المقر الرئيسي لمجموعة زيدان",
+    "Zedan Retail": "زيدان للتجزئة",
+    "Zedan Energy Services": "زيدان لخدمات الطاقة",
+  },
+  title: {
+    "Commercial Registration (CR)": "السجل التجاري",
+    "ZATCA Certificate": "شهادة الزكاة والضريبة والجمارك",
+    "Baladiyah License": "رخصة البلدية",
+    "Salamah Certificate": "شهادة سلامة",
+    "GOSI Registration": "تسجيل التأمينات الاجتماعية",
+    "Labor Office File": "ملف مكتب العمل",
+    "Wasil Registration": "تسجيل واصل",
+  },
+  authority: {
+    "Ministry of Commerce": "وزارة التجارة",
+    ZATCA: "هيئة الزكاة والضريبة والجمارك",
+    Municipality: "البلدية",
+    "Civil Defense": "الدفاع المدني",
+    GOSI: "التأمينات الاجتماعية",
+    "Ministry of Human Resources": "وزارة الموارد البشرية",
+    "Saudi Post": "البريد السعودي",
+  },
+  owner: {
+    "Corporate Affairs": "الشؤون المؤسسية",
+    "Finance Controller": "مسؤول الرقابة المالية",
+    "Retail Operations": "عمليات التجزئة",
+    "HSE Officer": "مسؤول الصحة والسلامة والبيئة",
+    "HR Operations": "عمليات الموارد البشرية",
+    "Government Relations": "العلاقات الحكومية",
+    "Admin Services": "الخدمات الإدارية",
+    "HR Retail": "موارد بشرية التجزئة",
+    "HR Energy": "موارد بشرية الطاقة",
+    "Government Relations Desk": "مكتب العلاقات الحكومية",
+    "HR Renewal Desk": "مكتب تجديد الموارد البشرية",
+  },
+  journey: {
+    "Entity Readiness": "جاهزية الكيان",
+    "Tax Readiness": "الجاهزية الضريبية",
+    "Municipality Renewal": "تجديد البلدية",
+    "Site Readiness": "جاهزية الموقع",
+    "Workforce Coverage": "تغطية القوى العاملة",
+    "Government Access": "النفاذ الحكومي",
+    "Address Continuity": "استمرارية العنوان",
+  },
+  name: {
+    "Rashed Al-Qahtani": "راشد القحطاني",
+    "Maha Al-Suwaidi": "مها السويدي",
+    "Sultan Al-Harbi": "سلطان الحربي",
+    "Fahad Al-Otaibi": "فهد العتيبي",
+    "Noura Al-Dossary": "نورة الدوسري",
+    "Ahmed Al-Rashid": "أحمد الراشد",
+    "Khalid Al-Mutairi": "خالد المطيري",
+  },
+  role: {
+    "Government Relations Lead": "قائد العلاقات الحكومية",
+    "Administration Manager": "مدير الإدارة",
+    "Finance Controller": "مسؤول الرقابة المالية",
+    "Retail Operations Manager": "مدير عمليات التجزئة",
+    "Store Administration Supervisor": "مشرف إدارة المتجر",
+    "Operations Director": "مدير العمليات",
+    "Field Supervisor": "مشرف ميداني",
+  },
+  department: {
+    "Corporate Affairs": "الشؤون المؤسسية",
+    "Admin Services": "الخدمات الإدارية",
+    Finance: "المالية",
+    Operations: "العمليات",
+    "Store Operations": "عمليات المتجر",
+    "Energy Operations": "عمليات الطاقة",
+    "Field Operations": "العمليات الميدانية",
+  },
+} as const;
+
+function formatDate(value: string, locale: Locale) {
+  return new Date(value).toLocaleDateString(locale === "ar" ? "ar-SA" : "en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
+}
+
+function replaceTemplate(
+  template: string,
+  values: Record<string, string>,
+) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replace(`{${key}}`, value),
+    template,
+  );
+}
+
+function localizeMappedValue(
+  locale: Locale,
+  category: keyof typeof localizedValues,
+  value: string,
+) {
+  if (locale === "en") {
+    return value;
+  }
+
+  return localizedValues[category][value as keyof (typeof localizedValues)[typeof category]] ?? value;
+}
+
+function localizeStatus(status: RecordStatus, locale: Locale) {
+  const labels: Record<Locale, Record<RecordStatus, string>> = {
+    en: {
+      active: "active",
+      "expiring-soon": "expiring soon",
+      "renewal-in-progress": "renewal in progress",
+      missing: "missing",
+      overdue: "overdue",
+    },
+    ar: {
+      active: "ساري",
+      "expiring-soon": "ينتهي قريبًا",
+      "renewal-in-progress": "التجديد قيد التنفيذ",
+      missing: "مفقود",
+      overdue: "متأخر",
+    },
+  };
+
+  return labels[locale][status];
+}
+
+function localizePriority(priority: Priority, locale: Locale) {
+  const labels: Record<Locale, Record<Priority, string>> = {
+    en: {
+      low: "low",
+      medium: "medium",
+      high: "high",
+      critical: "critical",
+    },
+    ar: {
+      low: "منخفض",
+      medium: "متوسط",
+      high: "مرتفع",
+      critical: "حرج",
+    },
+  };
+
+  return labels[locale][priority];
 }
 
 function appendActivity(
@@ -198,6 +537,7 @@ function PanelButton(props: {
 
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [locale, setLocale] = useState<Locale>("en");
   const [scenario, setScenario] = useState<ScenarioKey>("warning");
   const [module, setModule] = useState<ModuleKey>("dashboard");
   const [selectedSubsidiary, setSelectedSubsidiary] = useState<string>(subsidiaries[1]);
@@ -205,10 +545,27 @@ function App() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("emp-retail-ops");
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [demoState, setDemoState] = useState<DemoState>(() => createDemoState("warning"));
+  const isArabic = locale === "ar";
+  const t = copy[locale];
+  const localizedModuleLabels = moduleLabelsByLocale[locale];
+  const lSubsidiary = (value: string) => localizeMappedValue(locale, "subsidiary", value);
+  const lTitle = (value: string) => localizeMappedValue(locale, "title", value);
+  const lAuthority = (value: string) => localizeMappedValue(locale, "authority", value);
+  const lOwner = (value: string) => localizeMappedValue(locale, "owner", value);
+  const lJourney = (value: string) => localizeMappedValue(locale, "journey", value);
+  const lName = (value: string) => localizeMappedValue(locale, "name", value);
+  const lRole = (value: string) => localizeMappedValue(locale, "role", value);
+  const lDepartment = (value: string) => localizeMappedValue(locale, "department", value);
+  const localizeScenario = (value: ScenarioKey) => scenarioLabels[locale][value];
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDarkMode);
   }, [isDarkMode]);
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    document.documentElement.dir = locale === "ar" ? "rtl" : "ltr";
+  }, [locale]);
 
   useEffect(() => {
     const nextState = createDemoState(scenario);
@@ -217,8 +574,12 @@ function App() {
     setSelectedDocumentId("doc-baladiyah-retail");
     setSelectedEmployeeId("emp-retail-ops");
     setModule("dashboard");
-    setFlashMessage(`Workspace reset to ${scenario.toUpperCase()} scenario.`);
-  }, [scenario]);
+    setFlashMessage(
+      replaceTemplate(t.workspaceReset, {
+        scenario: localizeScenario(scenario),
+      }),
+    );
+  }, [locale, scenario]);
 
   const subsidiaryDocuments = useMemo(
     () =>
@@ -254,17 +615,17 @@ function App() {
   const overviewStats = useMemo(
     () => [
       {
-        label: "Entity Assets",
+        label: locale === "ar" ? "أصول الكيان" : "Entity Assets",
         value: String(subsidiaryDocuments.length).padStart(2, "0"),
         onClick: () => setModule("entity-vault"),
       },
       {
-        label: "Workforce Files",
+        label: locale === "ar" ? "ملفات القوى العاملة" : "Workforce Files",
         value: String(subsidiaryWorkforce.length).padStart(2, "0"),
         onClick: () => setModule("workforce"),
       },
       {
-        label: "Due Soon / Overdue",
+        label: locale === "ar" ? "يستحق قريبًا / متأخر" : "Due Soon / Overdue",
         value: String(
           countStatus(subsidiaryDocuments, "expiring-soon") +
             countStatus(subsidiaryDocuments, "overdue") +
@@ -274,20 +635,19 @@ function App() {
         onClick: () => setModule("action-center"),
       },
       {
-        label: "Journey Events",
+        label: locale === "ar" ? "أحداث الرحلة" : "Journey Events",
         value: String(demoState.activities.length).padStart(2, "0"),
         onClick: () => setModule("governance-trail"),
       },
     ],
-    [demoState.activities.length, subsidiaryDocuments, subsidiaryWorkforce],
+    [demoState.activities.length, locale, subsidiaryDocuments, subsidiaryWorkforce],
   );
 
   const reminderPlaybooks = [
     {
       id: "playbook-baladiyah",
-      title: "Municipality Renewal Journey",
-      description:
-        "Show how Baladiyah risk moves from dashboard insight to owner assignment, reminder, and completed renewal.",
+      title: t.municipalityRenewalJourney,
+      description: t.municipalityRenewalDescription,
       action: () => {
         setSelectedSubsidiary("Zedan Retail");
         setSelectedDocumentId("doc-baladiyah-retail");
@@ -296,9 +656,8 @@ function App() {
     },
     {
       id: "playbook-cr-zatca",
-      title: "CR / ZATCA Operating Readiness",
-      description:
-        "Show how business continuity depends on current CR and tax records with accountable owners.",
+      title: t.crReadiness,
+      description: t.crReadinessDescription,
       action: () => {
         setSelectedSubsidiary("Zedan Group HQ");
         setSelectedDocumentId("doc-zatca-hq");
@@ -307,9 +666,8 @@ function App() {
     },
     {
       id: "playbook-workforce",
-      title: "Workforce Legal File Journey",
-      description:
-        "Show how expiring iqama and permit records connect back to the subsidiary’s operating posture.",
+      title: t.workforceJourney,
+      description: t.workforceJourneyDescription,
       action: () => {
         setSelectedSubsidiary("Zedan Retail");
         setSelectedEmployeeId("emp-retail-ops");
@@ -351,7 +709,11 @@ function App() {
         "entity-vault",
       ),
     );
-    announce("Owner updated and visible across the journey.");
+    announce(
+      locale === "ar"
+        ? "تم تحديث المسؤول وأصبح ظاهرًا عبر الرحلة بالكامل."
+        : "Owner updated and visible across the journey.",
+    );
   }
 
   function assignEmployeeOwner(employeeId: string) {
@@ -365,7 +727,11 @@ function App() {
         "workforce",
       ),
     );
-    announce("Workforce record reassigned to HR Renewal Desk.");
+    announce(
+      locale === "ar"
+        ? "تمت إعادة توجيه سجل القوى العاملة إلى مكتب تجديد الموارد البشرية."
+        : "Workforce record reassigned to HR Renewal Desk.",
+    );
   }
 
   function createReminderTask(
@@ -412,7 +778,11 @@ function App() {
     });
 
     setModule("action-center");
-    announce("Reminder created and routed into the Action Center.");
+    announce(
+      locale === "ar"
+        ? "تم إنشاء التذكير وتوجيهه إلى مركز الإجراءات."
+        : "Reminder created and routed into the Action Center.",
+    );
   }
 
   function startDocumentRenewal(documentId: string) {
@@ -427,7 +797,11 @@ function App() {
       documentId,
       selectedDocument?.owner ?? "Government Relations",
     );
-    announce("Renewal journey started for the selected entity record.");
+    announce(
+      locale === "ar"
+        ? "تم بدء رحلة التجديد للسجل الكياني المحدد."
+        : "Renewal journey started for the selected entity record.",
+    );
   }
 
   function uploadRenewedDocument(documentId: string) {
@@ -457,7 +831,11 @@ function App() {
       );
     });
 
-    announce("Renewed document uploaded, task closed, and audit trail updated.");
+    announce(
+      locale === "ar"
+        ? "تم رفع المستند المجدد وإغلاق المهمة وتحديث سجل التدقيق."
+        : "Renewed document uploaded, task closed, and audit trail updated.",
+    );
   }
 
   function renewEmployeeRecord(employeeId: string) {
@@ -489,7 +867,11 @@ function App() {
       );
     });
 
-    announce("Workforce legal file renewed and reflected across the platform.");
+    announce(
+      locale === "ar"
+        ? "تم تجديد الملف القانوني للقوى العاملة وانعكس ذلك عبر المنصة."
+        : "Workforce legal file renewed and reflected across the platform.",
+    );
   }
 
   function escalateTask(taskId: string) {
@@ -525,7 +907,11 @@ function App() {
       );
     });
 
-    announce("Task escalated and pushed back to the top of the queue.");
+    announce(
+      locale === "ar"
+        ? "تم تصعيد المهمة وإعادتها إلى أعلى قائمة المتابعة."
+        : "Task escalated and pushed back to the top of the queue.",
+    );
   }
 
   function acknowledgeNotification(notificationId: string) {
@@ -537,12 +923,51 @@ function App() {
           : notification,
       ),
     }));
-    announce("Notification acknowledged.");
+    announce(locale === "ar" ? "تم الإقرار بالتنبيه." : "Notification acknowledged.");
   }
 
   function exportDemoReport() {
-    const content = buildExportSummary(demoState, selectedSubsidiary, scenario);
-    triggerDownload("v-axis-operational-summary.txt", content);
+    const docs = demoState.documents.filter((document) => document.subsidiary === selectedSubsidiary);
+    const staff = demoState.workforce.filter((person) => person.subsidiary === selectedSubsidiary);
+    const tasks = demoState.tasks.filter((task) => {
+      const document = docs.find((doc) => doc.id === task.relatedId);
+      const employee = staff.find((person) => person.id === task.relatedId);
+      return Boolean(document || employee);
+    });
+
+    const content = [
+      locale === "ar" ? "الملخص التشغيلي لمنصة V-AXIS" : "V-AXIS Operational Summary",
+      locale === "ar" ? `السيناريو: ${localizeScenario(scenario)}` : `Scenario: ${scenario}`,
+      locale === "ar"
+        ? `الشركة التابعة: ${lSubsidiary(selectedSubsidiary)}`
+        : `Subsidiary: ${selectedSubsidiary}`,
+      "",
+      locale === "ar" ? "مستندات الكيان:" : "Entity documents:",
+      ...docs.map((doc) =>
+        locale === "ar"
+          ? `- ${lTitle(doc.title)} | ${localizeStatus(doc.status, locale)} | ${replaceTemplate(t.ownerLowerLabel, {
+              owner: lOwner(doc.owner),
+            })} | ${t.expiryDate} ${doc.expiryDate}`
+          : `- ${doc.title} | ${doc.status} | owner ${doc.owner} | expiry ${doc.expiryDate}`,
+      ),
+      "",
+      locale === "ar" ? "سجلات القوى العاملة:" : "Workforce records:",
+      ...staff.map((person) =>
+        locale === "ar"
+          ? `- ${lName(person.employeeName)} | ${localizeStatus(person.status, locale)} | ${t.iqamaExpiry} ${person.iqamaExpiry} | ${t.permitExpiry} ${person.workPermitExpiry}`
+          : `- ${person.employeeName} | ${person.status} | iqama ${person.iqamaExpiry} | permit ${person.workPermitExpiry}`,
+      ),
+      "",
+      locale === "ar" ? "المهام المفتوحة:" : "Open tasks:",
+      ...tasks.map((task) =>
+        locale === "ar"
+          ? `- ${localizeTaskTitle(task.title)} | ${localizeStatus(task.status === "done" ? "active" : task.status === "open" ? "missing" : "renewal-in-progress", locale)} | ${replaceTemplate(t.ownerLowerLabel, {
+              owner: lOwner(task.owner),
+            })} | ${locale === "ar" ? "الاستحقاق" : "due"} ${task.dueDate}`
+          : `- ${task.title} | ${task.status} | owner ${task.owner} | due ${task.dueDate}`,
+      ),
+    ].join("\n");
+    triggerDownload(t.exportFilename, content);
     setDemoState((current) =>
       appendActivity(
         current,
@@ -551,13 +976,130 @@ function App() {
         "governance-trail",
       ),
     );
-    announce("Seeded executive summary exported.");
+    announce(
+      locale === "ar"
+        ? "تم تصدير الملخص التنفيذي الجاهز."
+        : "Seeded executive summary exported.",
+    );
   }
 
   const openTasks = demoState.tasks.filter((task) => task.status !== "done");
   const unresolvedNotifications = demoState.notifications.filter(
     (notification) => notification.status === "new",
   );
+  const localizeTaskTitle = (value: string) => {
+    if (locale === "en") {
+      return value;
+    }
+    if (value === "Renew Baladiyah License for Zedan Retail") {
+      return "تجديد رخصة البلدية لزيدان للتجزئة";
+    }
+    if (value === "Prepare workforce renewal pack for Retail Operations Manager") {
+      return "إعداد ملف تجديد القوى العاملة لمدير عمليات التجزئة";
+    }
+    if (value === "Review ZATCA renewal documents for Group HQ") {
+      return "مراجعة مستندات تجديد الزكاة والضريبة والجمارك للمقر الرئيسي";
+    }
+    if (value.startsWith("Complete renewal for ")) {
+      return `إكمال تجديد ${lTitle(value.replace("Complete renewal for ", ""))}`;
+    }
+    if (value.startsWith("Send reminder for ")) {
+      return `إرسال تذكير بخصوص ${lTitle(value.replace("Send reminder for ", ""))}`;
+    }
+    if (value.startsWith("Prepare legal file for ")) {
+      return `إعداد الملف القانوني للموظف ${lName(value.replace("Prepare legal file for ", ""))}`;
+    }
+    return value;
+  };
+  const localizeNotificationTitle = (value: string) => {
+    if (locale === "en") {
+      return value;
+    }
+    const map: Record<string, string> = {
+      "Baladiyah license nearing expiry": "رخصة البلدية تقترب من الانتهاء",
+      "Workforce legal documents require attention": "مستندات القوى العاملة القانونية تحتاج إلى متابعة",
+      "Reminder scheduled": "تمت جدولة التذكير",
+      "Task escalated": "تم تصعيد المهمة",
+    };
+    return map[value] ?? value;
+  };
+  const localizeNotificationMessage = (value: string) => {
+    if (locale === "en") {
+      return value;
+    }
+    if (value === "Retail municipality renewal should be initiated to avoid operating disruption.") {
+      return "يجب بدء تجديد البلدية الخاصة بالتجزئة لتجنب أي تعطل تشغيلي.";
+    }
+    if (value === "Retail Operations Manager has linked iqama / permit documents entering renewal window.") {
+      return "مدير عمليات التجزئة لديه مستندات إقامة وتصريح مرتبطة دخلت نافذة التجديد.";
+    }
+    if (value.endsWith(" has been placed in the action queue.")) {
+      return `${localizeTaskTitle(value.replace(" has been placed in the action queue.", ""))} تمت إضافته إلى قائمة الإجراءات.`;
+    }
+    if (value.endsWith(" was escalated for immediate management attention.")) {
+      return `${localizeTaskTitle(value.replace(" was escalated for immediate management attention.", ""))} تم تصعيده لاهتمام الإدارة الفوري.`;
+    }
+    return value;
+  };
+  const localizeActivityTitle = (value: string) => {
+    if (locale === "en") {
+      return value;
+    }
+    const map: Record<string, string> = {
+      "Scenario initialized": "تم تهيئة السيناريو",
+      "Baladiyah renewal task prepared": "تم إعداد مهمة تجديد البلدية",
+      "Executive report draft available": "مسودة التقرير التنفيذي متاحة",
+      "Document owner reassigned": "تمت إعادة تعيين مسؤول المستند",
+      "Workforce owner reassigned": "تمت إعادة تعيين مسؤول ملف الموظف",
+      "Reminder queued": "تم إدراج التذكير",
+      "Renewed document uploaded": "تم رفع المستند المجدد",
+      "Workforce file renewed": "تم تجديد ملف القوى العاملة",
+      "Action escalated": "تم تصعيد الإجراء",
+      "Management summary exported": "تم تصدير الملخص الإداري",
+    };
+    return map[value] ?? value;
+  };
+  const localizeActivityDetail = (value: string) => {
+    if (locale === "en") {
+      return value;
+    }
+    if (value.startsWith("Workspace loaded in ")) {
+      const scenarioKey = value.includes("STABLE")
+        ? "stable"
+        : value.includes("CRITICAL")
+          ? "critical"
+          : "warning";
+      return `تم تحميل مساحة العمل في وضع ${localizeScenario(scenarioKey)}.`;
+    }
+    if (value === "A coordinated entity and workforce recovery path is ready to showcase.") {
+      return "تم تجهيز مسار منسق لتعافي الكيان والقوى العاملة لعرضه بوضوح.";
+    }
+    if (value === "A seeded management summary can be exported at any point in the journey.") {
+      return "يمكن تصدير ملخص إداري جاهز في أي نقطة من الرحلة.";
+    }
+    if (value.endsWith(" is now owned by Government Relations Desk.")) {
+      return `${lTitle(value.replace(" is now owned by Government Relations Desk.", ""))} أصبح الآن تحت مسؤولية مكتب العلاقات الحكومية.`;
+    }
+    if (value.endsWith(" is now routed to HR Renewal Desk.")) {
+      return `${lName(value.replace(" is now routed to HR Renewal Desk.", ""))} تم توجيهه الآن إلى مكتب تجديد الموارد البشرية.`;
+    }
+    if (value.endsWith(" is now tracked in the Action Center.")) {
+      return `${localizeTaskTitle(value.replace(" is now tracked in the Action Center.", ""))} أصبح الآن متابعًا داخل مركز الإجراءات.`;
+    }
+    if (value.endsWith(" was renewed and the operating story turned green.")) {
+      return `${lTitle(value.replace(" was renewed and the operating story turned green.", ""))} تم تجديده وتحولت الحالة التشغيلية إلى وضع سليم.`;
+    }
+    if (value.endsWith(" now shows healthy legal documents.")) {
+      return `${lName(value.replace(" now shows healthy legal documents.", ""))} يظهر الآن مستندات قانونية سليمة.`;
+    }
+    if (value.endsWith(" is now in critical response mode.")) {
+      return `${localizeTaskTitle(value.replace(" is now in critical response mode.", ""))} أصبح الآن في وضع استجابة حرجة.`;
+    }
+    if (value.startsWith("A seeded report for ")) {
+      return `تم إنشاء تقرير مُجهّز مسبقًا لـ ${lSubsidiary(value.replace("A seeded report for ", "").replace(" was generated from the current journey state.", ""))} من حالة الرحلة الحالية.`;
+    }
+    return value;
+  };
   const heroShellClass = isDarkMode
     ? "border-slate-700/80 bg-[linear-gradient(135deg,rgba(8,17,31,0.92),rgba(15,23,42,0.8))]"
     : "border-white/35 bg-[linear-gradient(135deg,rgba(248,250,252,0.78),rgba(226,232,240,0.48))]";
@@ -584,7 +1126,7 @@ function App() {
     : "border-white/40 bg-background/80 text-slate-700";
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground" dir={isArabic ? "rtl" : "ltr"}>
       <div className="mx-auto min-h-screen max-w-[1720px] px-5 py-6 sm:px-8 lg:px-10">
         <header
           className={`mb-8 rounded-[2rem] border p-6 shadow-[var(--shadow-soft)] backdrop-blur ${heroShellClass}`}
@@ -598,29 +1140,37 @@ function App() {
                 V-AXIS
               </h1>
               <p className="mt-2 text-sm uppercase tracking-[0.32em] text-primary">
-                Operational Continuity Journey
+                {t.heroEyebrow}
               </p>
               <p className="mt-4 max-w-2xl text-sm text-muted-foreground">
-                Entity readiness, workforce legal files, actions, and audit
-                outcomes move together in one connected operating system.
+                {t.heroDescription}
               </p>
             </div>
 
             <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-end">
               <button
                 type="button"
+                onClick={() => setLocale((current) => (current === "en" ? "ar" : "en"))}
+                className={`inline-flex items-center justify-center gap-2 rounded-[1.5rem] border px-5 py-3 text-sm font-medium shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.02] ${utilityButtonClass}`}
+              >
+                {t.languageShort}
+                <span className="text-muted-foreground">/</span>
+                {t.languageOther}
+              </button>
+              <button
+                type="button"
                 onClick={exportDemoReport}
                 className={`inline-flex items-center justify-center gap-2 rounded-[1.5rem] border px-5 py-3 text-sm font-medium shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.02] ${utilityButtonClass}`}
               >
                 <Download className="h-4 w-4 text-primary" />
-                Export Operational Summary
+                {t.exportSummary}
               </button>
 
               <button
                 type="button"
                 onClick={() => setIsDarkMode((value) => !value)}
                 className={`inline-flex items-center justify-center rounded-[1.5rem] border p-3 shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.04] ${utilityButtonClass}`}
-                aria-label={isDarkMode ? "Enable light mode" : "Enable dark mode"}
+                aria-label={isDarkMode ? t.lightMode : t.darkMode}
               >
                 {isDarkMode ? (
                   <Sun className="h-5 w-5 text-primary" />
@@ -637,10 +1187,10 @@ function App() {
             >
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  Active Story Scenario
+                  {t.activeStoryScenario}
                 </p>
                 <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                  {scenario.toUpperCase()}
+                  {localizeScenario(scenario)}
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -655,12 +1205,12 @@ function App() {
                         : inactiveSegmentClass
                     }`}
                   >
-                    {key.toUpperCase()}
+                    {scenarioLabels[locale][key]}
                   </button>
                 ))}
               </div>
               <p className="mt-3 text-sm text-muted-foreground">
-                {scenarioDescriptions[scenario]}
+                {scenarioDescriptionsByLocale[locale][scenario]}
               </p>
             </div>
 
@@ -669,7 +1219,7 @@ function App() {
             >
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  Active Subsidiary
+                  {t.activeSubsidiary}
                 </p>
                 <Building2 className="h-4 w-4 text-primary" />
               </div>
@@ -685,7 +1235,7 @@ function App() {
                         : inactiveSegmentClass
                     }`}
                   >
-                    {name}
+                    {lSubsidiary(name)}
                   </button>
                 ))}
               </div>
@@ -705,9 +1255,9 @@ function App() {
                 }`}
               >
                 <div className="text-xs uppercase tracking-[0.18em] opacity-70">
-                  Platform Surface
+                  {t.platformSurface}
                 </div>
-                <div className="mt-1 text-sm font-semibold">{moduleLabels[key]}</div>
+                <div className="mt-1 text-sm font-semibold">{localizedModuleLabels[key]}</div>
               </button>
             ))}
           </div>
@@ -722,13 +1272,13 @@ function App() {
         <main className="grid gap-8">
           {module === "dashboard" ? (
             <Surface
-              title="Command Center"
-              description="The command center starts the story, then routes the user into the right operating surface. Every card below is alive."
+              title={localizedModuleLabels.dashboard}
+              description={t.commandCenterDescription}
               isDarkMode={isDarkMode}
               action={
                 <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
                   <Bell className="h-4 w-4" />
-                  {unresolvedNotifications.length} active alerts
+                  {unresolvedNotifications.length} {t.activeAlerts}
                 </div>
               }
             >
@@ -750,7 +1300,7 @@ function App() {
                       {stat.value}
                     </p>
                     <p className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary">
-                      Open surface
+                      {t.openSurface}
                       <ArrowRight className="h-4 w-4" />
                     </p>
                   </button>
@@ -763,7 +1313,7 @@ function App() {
                 >
                   <div className="mb-4 flex items-center gap-3">
                     <Landmark className="h-5 w-5 text-primary" />
-                    <h3 className="text-lg font-semibold">Customer-led Use Cases</h3>
+                    <h3 className="text-lg font-semibold">{t.customerUseCases}</h3>
                   </div>
                   <div className="space-y-4">
                     {reminderPlaybooks.map((playbook) => (
@@ -792,11 +1342,12 @@ function App() {
                 >
                   <div className="mb-4 flex items-center gap-3">
                     <AlertTriangle className="h-5 w-5 text-destructive" />
-                    <h3 className="text-lg font-semibold">Current Story Trigger</h3>
+                    <h3 className="text-lg font-semibold">{t.currentStoryTrigger}</h3>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    For {selectedSubsidiary}, the platform is strongest when it shows how entity
-                    readiness and workforce legal files move together.
+                    {replaceTemplate(t.triggerDescription, {
+                      subsidiary: lSubsidiary(selectedSubsidiary),
+                    })}
                   </p>
                   <div className="mt-4 space-y-3">
                     {subsidiaryDocuments
@@ -814,9 +1365,11 @@ function App() {
                         >
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <p className="font-medium">{document.title}</p>
+                              <p className="font-medium">{lTitle(document.title)}</p>
                               <p className="text-sm text-muted-foreground">
-                                {document.authority} · expires {formatDate(document.expiryDate)}
+                                {lAuthority(document.authority)} · {replaceTemplate(t.expiresLabel, {
+                                  date: formatDate(document.expiryDate, locale),
+                                })}
                               </p>
                             </div>
                             <span
@@ -825,7 +1378,7 @@ function App() {
                                 isDarkMode,
                               )}`}
                             >
-                              {document.status.replace(/-/g, " ")}
+                              {localizeStatus(document.status, locale)}
                             </span>
                           </div>
                         </button>
@@ -839,8 +1392,8 @@ function App() {
           {module === "entity-vault" ? (
             <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
               <Surface
-                title="Entity Vault"
-                description="This is where CR, ZATCA, Baladiyah, GOSI, Salamah, and related operating records become a real workflow rather than a dead card."
+                title={localizedModuleLabels["entity-vault"]}
+                description={t.entityVaultDescription}
                 isDarkMode={isDarkMode}
               >
                 <div className="space-y-4">
@@ -861,12 +1414,12 @@ function App() {
                             <FileText className="h-6 w-6" />
                           </div>
                           <div>
-                            <p className="font-semibold">{document.title}</p>
+                            <p className="font-semibold">{lTitle(document.title)}</p>
                             <p className="mt-1 text-sm text-muted-foreground">
-                              {document.authority} · {document.number}
+                              {lAuthority(document.authority)} · {document.number}
                             </p>
                             <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                              Owner {document.owner}
+                              {replaceTemplate(t.ownerLabel, { owner: lOwner(document.owner) })}
                             </p>
                           </div>
                         </div>
@@ -877,10 +1430,12 @@ function App() {
                               isDarkMode,
                             )}`}
                           >
-                            {document.status.replace(/-/g, " ")}
+                              {localizeStatus(document.status, locale)}
                           </span>
                           <p className="mt-3 text-sm text-muted-foreground">
-                            Expires {formatDate(document.expiryDate)}
+                            {replaceTemplate(t.expiresLabel, {
+                              date: formatDate(document.expiryDate, locale),
+                            })}
                           </p>
                         </div>
                       </div>
@@ -890,8 +1445,8 @@ function App() {
               </Surface>
 
               <Surface
-                title={selectedDocument?.title ?? "Document Detail"}
-                description="The detail pane is the heart of the story. Actions here update the Action Center, Governance Trail, and linked workforce records."
+                title={selectedDocument ? lTitle(selectedDocument.title) : (isArabic ? "تفاصيل المستند" : "Document Detail")}
+                description={t.documentDetailDescription}
                 isDarkMode={isDarkMode}
                 action={
                   <span
@@ -900,37 +1455,38 @@ function App() {
                       isDarkMode,
                     )}`}
                   >
-                    {selectedDocument?.status.replace(/-/g, " ") ?? "active"}
+                    {selectedDocument ? localizeStatus(selectedDocument.status, locale) : localizeStatus("active", locale)}
                   </span>
                 }
               >
                 {selectedDocument ? (
                   <div className="space-y-5">
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <InfoCard label="Authority" isDarkMode={isDarkMode}>{selectedDocument.authority}</InfoCard>
-                      <InfoCard label="Document No." isDarkMode={isDarkMode}>{selectedDocument.number}</InfoCard>
-                      <InfoCard label="Issue Date" isDarkMode={isDarkMode}>{formatDate(selectedDocument.issueDate)}</InfoCard>
-                      <InfoCard label="Expiry Date" isDarkMode={isDarkMode}>{formatDate(selectedDocument.expiryDate)}</InfoCard>
+                      <InfoCard label={t.authority} isDarkMode={isDarkMode}>{lAuthority(selectedDocument.authority)}</InfoCard>
+                      <InfoCard label={t.documentNo} isDarkMode={isDarkMode}>{selectedDocument.number}</InfoCard>
+                      <InfoCard label={t.issueDate} isDarkMode={isDarkMode}>{formatDate(selectedDocument.issueDate, locale)}</InfoCard>
+                      <InfoCard label={t.expiryDate} isDarkMode={isDarkMode}>{formatDate(selectedDocument.expiryDate, locale)}</InfoCard>
                     </div>
 
                     <div className={`rounded-[1.5rem] border p-4 ${solidCardClass}`}>
                       <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                        What This Story Proves
+                        {t.whatThisProves}
                       </p>
                       <p className={`mt-2 text-sm ${isDarkMode ? "text-slate-100" : "text-slate-700"}`}>
-                        {selectedDocument.journeyLabel} is not isolated. This record links to
-                        specific people and actions needed to keep the subsidiary operational.
+                        {locale === "ar"
+                          ? `${lJourney(selectedDocument.journeyLabel)} ليست معزولة. هذا السجل يرتبط بأشخاص وإجراءات محددة لازمة لاستمرار تشغيل الشركة التابعة.`
+                          : `${selectedDocument.journeyLabel} is not isolated. This record links to specific people and actions needed to keep the subsidiary operational.`}
                       </p>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
                       <PanelButton
-                        label="Assign Owner"
+                        label={t.assignOwner}
                         isDarkMode={isDarkMode}
                         onClick={() => assignDocumentOwner(selectedDocument.id)}
                       />
                       <PanelButton
-                        label="Queue Reminder"
+                        label={t.queueReminder}
                         tone="secondary"
                         isDarkMode={isDarkMode}
                         onClick={() =>
@@ -944,13 +1500,13 @@ function App() {
                         }
                       />
                       <PanelButton
-                        label="Start Renewal"
+                        label={t.startRenewal}
                         tone="secondary"
                         isDarkMode={isDarkMode}
                         onClick={() => startDocumentRenewal(selectedDocument.id)}
                       />
                       <PanelButton
-                        label="Upload Renewal"
+                        label={t.uploadRenewal}
                         tone="ghost"
                         isDarkMode={isDarkMode}
                         onClick={() => uploadRenewedDocument(selectedDocument.id)}
@@ -960,7 +1516,7 @@ function App() {
                     <div className={`rounded-[1.5rem] border p-4 ${solidCardClass}`}>
                       <div className="mb-3 flex items-center gap-2">
                         <Users className="h-4 w-4 text-primary" />
-                        <p className="font-medium">Linked Workforce Records</p>
+                        <p className="font-medium">{t.linkedWorkforceRecords}</p>
                       </div>
                       <div className="space-y-3">
                         {linkedEmployeeRecords.map((employee) => (
@@ -975,9 +1531,9 @@ function App() {
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div>
-                                <p className="font-medium">{employee.employeeName}</p>
+                                <p className="font-medium">{lName(employee.employeeName)}</p>
                                 <p className="text-sm text-muted-foreground">
-                                  {employee.role} · {employee.department}
+                                  {lRole(employee.role)} · {lDepartment(employee.department)}
                                 </p>
                               </div>
                               <span
@@ -986,7 +1542,7 @@ function App() {
                                   isDarkMode,
                                 )}`}
                               >
-                                {employee.status.replace(/-/g, " ")}
+                                {localizeStatus(employee.status, locale)}
                               </span>
                             </div>
                           </button>
@@ -1002,8 +1558,8 @@ function App() {
           {module === "workforce" ? (
             <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
               <Surface
-                title="Workforce Portal"
-                description="Workforce legal documents are showcased as an operational journey, connected back to Baladiyah, CR, ZATCA, and government-facing entity records."
+                title={localizedModuleLabels.workforce}
+                description={t.workforcePortalDescription}
                 isDarkMode={isDarkMode}
               >
                 <div className="space-y-4">
@@ -1024,12 +1580,12 @@ function App() {
                             <Briefcase className="h-6 w-6" />
                           </div>
                           <div>
-                            <p className="font-semibold">{employee.employeeName}</p>
+                            <p className="font-semibold">{lName(employee.employeeName)}</p>
                             <p className="mt-1 text-sm text-muted-foreground">
-                              {employee.role} · {employee.department}
+                              {lRole(employee.role)} · {lDepartment(employee.department)}
                             </p>
                             <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                              Owner {employee.owner}
+                              {replaceTemplate(t.ownerLabel, { owner: lOwner(employee.owner) })}
                             </p>
                           </div>
                         </div>
@@ -1040,10 +1596,12 @@ function App() {
                               isDarkMode,
                             )}`}
                           >
-                            {employee.status.replace(/-/g, " ")}
+                            {localizeStatus(employee.status, locale)}
                           </span>
                           <p className="mt-3 text-sm text-muted-foreground">
-                            Iqama {formatDate(employee.iqamaExpiry)}
+                            {replaceTemplate(t.iqamaDateLabel, {
+                              date: formatDate(employee.iqamaExpiry, locale),
+                            })}
                           </p>
                         </div>
                       </div>
@@ -1053,8 +1611,8 @@ function App() {
               </Surface>
 
               <Surface
-                title={selectedEmployee?.employeeName ?? "Workforce Detail"}
-                description="Actions here create a visible bridge between employee legal files and the entity records needed for real-world operations."
+                title={selectedEmployee ? lName(selectedEmployee.employeeName) : (isArabic ? "تفاصيل الموظف" : "Workforce Detail")}
+                description={t.workforceDetailDescription}
                 isDarkMode={isDarkMode}
                 action={
                   <span
@@ -1063,31 +1621,31 @@ function App() {
                       isDarkMode,
                     )}`}
                   >
-                    {selectedEmployee?.status.replace(/-/g, " ") ?? "active"}
+                    {selectedEmployee ? localizeStatus(selectedEmployee.status, locale) : localizeStatus("active", locale)}
                   </span>
                 }
               >
                 {selectedEmployee ? (
                   <div className="space-y-5">
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <InfoCard label="Iqama No." isDarkMode={isDarkMode}>{selectedEmployee.iqamaNumber}</InfoCard>
-                      <InfoCard label="Iqama Expiry" isDarkMode={isDarkMode}>
-                        {formatDate(selectedEmployee.iqamaExpiry)}
+                      <InfoCard label={t.iqamaNo} isDarkMode={isDarkMode}>{selectedEmployee.iqamaNumber}</InfoCard>
+                      <InfoCard label={t.iqamaExpiry} isDarkMode={isDarkMode}>
+                        {formatDate(selectedEmployee.iqamaExpiry, locale)}
                       </InfoCard>
-                      <InfoCard label="Permit No." isDarkMode={isDarkMode}>{selectedEmployee.workPermitNumber}</InfoCard>
-                      <InfoCard label="Permit Expiry" isDarkMode={isDarkMode}>
-                        {formatDate(selectedEmployee.workPermitExpiry)}
+                      <InfoCard label={t.permitNo} isDarkMode={isDarkMode}>{selectedEmployee.workPermitNumber}</InfoCard>
+                      <InfoCard label={t.permitExpiry} isDarkMode={isDarkMode}>
+                        {formatDate(selectedEmployee.workPermitExpiry, locale)}
                       </InfoCard>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
                       <PanelButton
-                        label="Assign HR Owner"
+                        label={t.assignHrOwner}
                         isDarkMode={isDarkMode}
                         onClick={() => assignEmployeeOwner(selectedEmployee.id)}
                       />
                       <PanelButton
-                        label="Queue Reminder"
+                        label={t.queueReminder}
                         tone="secondary"
                         isDarkMode={isDarkMode}
                         onClick={() =>
@@ -1101,7 +1659,7 @@ function App() {
                         }
                       />
                       <PanelButton
-                        label="Upload New Copy"
+                        label={t.uploadNewCopy}
                         tone="ghost"
                         isDarkMode={isDarkMode}
                         onClick={() => renewEmployeeRecord(selectedEmployee.id)}
@@ -1111,7 +1669,7 @@ function App() {
                     <div className={`rounded-[1.5rem] border p-4 ${solidCardClass}`}>
                       <div className="mb-3 flex items-center gap-2">
                         <Building2 className="h-4 w-4 text-primary" />
-                        <p className="font-medium">Linked Entity Dependencies</p>
+                        <p className="font-medium">{t.linkedEntityDependencies}</p>
                       </div>
                       <div className="space-y-3">
                         {linkedEntityRecords.map((document) => (
@@ -1126,9 +1684,11 @@ function App() {
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div>
-                                <p className="font-medium">{document.title}</p>
+                                <p className="font-medium">{lTitle(document.title)}</p>
                                 <p className="text-sm text-muted-foreground">
-                                  {document.authority} · owner {document.owner}
+                                  {lAuthority(document.authority)} · {replaceTemplate(t.ownerLowerLabel, {
+                                    owner: lOwner(document.owner),
+                                  })}
                                 </p>
                               </div>
                               <span
@@ -1137,7 +1697,7 @@ function App() {
                                   isDarkMode,
                                 )}`}
                               >
-                                {document.status.replace(/-/g, " ")}
+                                {localizeStatus(document.status, locale)}
                               </span>
                             </div>
                           </button>
@@ -1153,8 +1713,8 @@ function App() {
           {module === "action-center" ? (
             <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
               <Surface
-                title="Action Center"
-                description="This turns reminders, assignments, and escalations into the visible operating layer of the platform."
+                title={localizedModuleLabels["action-center"]}
+                description={t.actionCenterDescription}
                 isDarkMode={isDarkMode}
               >
                 <div className="space-y-4">
@@ -1165,12 +1725,17 @@ function App() {
                     >
                       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                         <div>
-                          <p className="font-semibold">{task.title}</p>
+                          <p className="font-semibold">{localizeTaskTitle(task.title)}</p>
                           <p className="mt-1 text-sm text-muted-foreground">
-                            Owner {task.owner} · due {formatDate(task.dueDate)}
+                            {replaceTemplate(t.dueLabel, {
+                              owner: lOwner(task.owner),
+                              date: formatDate(task.dueDate, locale),
+                            })}
                           </p>
                           <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                            Routed from {moduleLabels[task.module]}
+                            {replaceTemplate(t.routedFrom, {
+                              module: localizedModuleLabels[task.module],
+                            })}
                           </p>
                         </div>
                         <span
@@ -1179,17 +1744,17 @@ function App() {
                             isDarkMode,
                           )}`}
                         >
-                          {task.priority}
+                          {localizePriority(task.priority, locale)}
                         </span>
                       </div>
                       <div className="mt-4 flex flex-wrap gap-2">
                         <PanelButton
-                          label="Escalate"
+                          label={t.escalate}
                           isDarkMode={isDarkMode}
                           onClick={() => escalateTask(task.id)}
                         />
                         <PanelButton
-                          label="Open Related Record"
+                          label={t.openRelatedRecord}
                           tone="secondary"
                           isDarkMode={isDarkMode}
                           onClick={() => {
@@ -1203,7 +1768,7 @@ function App() {
                           }}
                         />
                         <PanelButton
-                          label="Mark Complete"
+                          label={t.markComplete}
                           tone="ghost"
                           isDarkMode={isDarkMode}
                           onClick={() => {
@@ -1221,8 +1786,8 @@ function App() {
               </Surface>
 
               <Surface
-                title="Notification Queue"
-                description="Each reminder or escalation feeds a visible queue, giving the platform momentum, accountability, and consequence."
+                title={isArabic ? "قائمة التنبيهات" : "Notification Queue"}
+                description={t.notificationQueueDescription}
                 isDarkMode={isDarkMode}
               >
                 <div className="space-y-4">
@@ -1233,9 +1798,9 @@ function App() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="font-medium">{notification.title}</p>
+                          <p className="font-medium">{localizeNotificationTitle(notification.title)}</p>
                           <p className="mt-1 text-sm text-muted-foreground">
-                            {notification.message}
+                            {localizeNotificationMessage(notification.message)}
                           </p>
                         </div>
                         <span
@@ -1244,15 +1809,15 @@ function App() {
                             isDarkMode,
                           )}`}
                         >
-                          {notification.severity}
+                          {localizePriority(notification.severity, locale)}
                         </span>
                       </div>
                       <div className="mt-3 flex gap-2">
                         <PanelButton
                           label={
                             notification.status === "acknowledged"
-                              ? "Acknowledged"
-                              : "Acknowledge"
+                              ? t.acknowledged
+                              : t.acknowledge
                           }
                           tone={
                             notification.status === "acknowledged"
@@ -1273,13 +1838,13 @@ function App() {
           {module === "governance-trail" ? (
             <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
               <Surface
-                title="Governance Trail"
-                description="This closes the loop: every action taken in the platform leaves a visible record and becomes exportable for management."
+                title={localizedModuleLabels["governance-trail"]}
+                description={t.governanceTrailDescription}
                 isDarkMode={isDarkMode}
                 action={
                   <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
                     <ShieldCheck className="h-4 w-4" />
-                    audit-ready
+                    {t.auditReady}
                   </div>
                 }
               >
@@ -1291,16 +1856,16 @@ function App() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="font-semibold">{activity.title}</p>
+                          <p className="font-semibold">{localizeActivityTitle(activity.title)}</p>
                           <p className="mt-1 text-sm text-muted-foreground">
-                            {activity.detail}
+                            {localizeActivityDetail(activity.detail)}
                           </p>
                           <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                            {moduleLabels[activity.module]}
+                            {localizedModuleLabels[activity.module]}
                           </p>
                         </div>
                         <div className="text-right text-xs text-muted-foreground">
-                          {formatDate(activity.timestamp)}
+                          {formatDate(activity.timestamp, locale)}
                         </div>
                       </div>
                     </div>
@@ -1309,17 +1874,24 @@ function App() {
               </Surface>
 
               <Surface
-                title="Narrative Outcomes"
-                description="These are the outcomes the client should immediately understand after reviewing the platform journey."
+                title={t.narrativeOutcomes}
+                description={t.narrativeDescription}
                 isDarkMode={isDarkMode}
               >
                 <div className="space-y-4">
-                  {[
-                    "Entity readiness is not isolated. Baladiyah, CR, ZATCA, GOSI, and Labor Office File sit in one shared operating picture.",
-                    "Workforce legal records are linked to the subsidiary story, not treated as a separate HR spreadsheet.",
-                    "Every action creates visible consequences: tasks, notifications, and audit events.",
-                    "The platform can stay seeded with live-looking operational context while still feeling fully connected and production-ready.",
-                  ].map((line) => (
+                  {(locale === "ar"
+                    ? [
+                        "جاهزية الكيان ليست معزولة. البلدية والسجل التجاري والزكاة والتأمينات وملف مكتب العمل تظهر داخل صورة تشغيلية واحدة.",
+                        "السجلات القانونية للقوى العاملة مرتبطة بقصة الشركة التابعة وليست ملف موارد بشرية منفصلًا.",
+                        "كل إجراء يخلق نتيجة مرئية: مهام وتنبيهات وأحداث حوكمة.",
+                        "يمكن أن تبقى المنصة مزودة بسياق تشغيلي واقعي مع الحفاظ على شعور كامل بالترابط والجاهزية.",
+                      ]
+                    : [
+                        "Entity readiness is not isolated. Baladiyah, CR, ZATCA, GOSI, and Labor Office File sit in one shared operating picture.",
+                        "Workforce legal records are linked to the subsidiary story, not treated as a separate HR spreadsheet.",
+                        "Every action creates visible consequences: tasks, notifications, and audit events.",
+                        "The platform can stay seeded with live-looking operational context while still feeling fully connected and production-ready.",
+                      ]).map((line) => (
                     <div
                       key={line}
                       className={`rounded-[1.4rem] border px-4 py-4 ${solidCardClass}`}
