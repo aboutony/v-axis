@@ -99,28 +99,28 @@ function getPriorityClasses(priority: Priority) {
     case "critical":
       return "bg-destructive text-white";
     case "high":
-      return "bg-amber-500 text-slate-950";
+      return "bg-amber-500 text-slate-950 dark:bg-amber-400/20 dark:text-amber-100";
     case "medium":
       return "bg-primary text-white";
     default:
-      return "bg-slate-200 text-slate-700";
+      return "bg-slate-200 text-slate-700 dark:bg-slate-700/70 dark:text-slate-100";
   }
 }
 
 function getStatusTone(status: RecordStatus) {
   switch (status) {
     case "active":
-      return "bg-emerald-100 text-emerald-700";
+      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-100";
     case "expiring-soon":
-      return "bg-amber-100 text-amber-700";
+      return "bg-amber-100 text-amber-700 dark:bg-amber-400/20 dark:text-amber-100";
     case "renewal-in-progress":
-      return "bg-sky-100 text-sky-700";
+      return "bg-sky-100 text-sky-700 dark:bg-sky-400/20 dark:text-sky-100";
     case "missing":
-      return "bg-slate-200 text-slate-700";
+      return "bg-slate-200 text-slate-700 dark:bg-slate-700/70 dark:text-slate-100";
     case "overdue":
-      return "bg-rose-100 text-rose-700";
+      return "bg-rose-100 text-rose-700 dark:bg-rose-400/20 dark:text-rose-100";
     default:
-      return "bg-slate-200 text-slate-700";
+      return "bg-slate-200 text-slate-700 dark:bg-slate-700/70 dark:text-slate-100";
   }
 }
 
@@ -141,7 +141,7 @@ function Surface(props: {
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-[2rem] border border-white/40 bg-[rgba(248,250,252,0.74)] p-6 shadow-[var(--shadow-soft)] backdrop-blur">
+    <section className="rounded-[2rem] border border-white/40 bg-[rgba(248,250,252,0.74)] p-6 shadow-[var(--shadow-soft)] backdrop-blur dark:border-slate-700/80 dark:bg-[rgba(9,17,31,0.82)]">
       <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h2
@@ -168,9 +168,9 @@ function PanelButton(props: {
 }) {
   const tone =
     props.tone === "secondary"
-      ? "border-slate-200 bg-white text-slate-700"
+      ? "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
       : props.tone === "ghost"
-        ? "border-transparent bg-transparent text-primary"
+        ? "border-transparent bg-transparent text-primary dark:text-emerald-300"
         : "border-primary bg-primary text-white";
 
   return (
@@ -550,7 +550,7 @@ function App() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto min-h-screen max-w-[1720px] px-5 py-6 sm:px-8 lg:px-10">
-        <header className="mb-8 rounded-[2rem] border border-white/35 bg-[linear-gradient(135deg,rgba(248,250,252,0.78),rgba(226,232,240,0.48))] p-6 shadow-[var(--shadow-soft)] backdrop-blur">
+        <header className="mb-8 rounded-[2rem] border border-white/35 bg-[linear-gradient(135deg,rgba(248,250,252,0.78),rgba(226,232,240,0.48))] p-6 shadow-[var(--shadow-soft)] backdrop-blur dark:border-slate-700/80 dark:bg-[linear-gradient(135deg,rgba(8,17,31,0.92),rgba(15,23,42,0.8))]">
           <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <h1
@@ -572,7 +572,7 @@ function App() {
               <button
                 type="button"
                 onClick={exportDemoReport}
-                className="inline-flex items-center justify-center gap-2 rounded-[1.5rem] border border-white/45 bg-background/80 px-5 py-3 text-sm font-medium shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.02]"
+                className="inline-flex items-center justify-center gap-2 rounded-[1.5rem] border border-white/45 bg-background/80 px-5 py-3 text-sm font-medium shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.02] dark:border-slate-700 dark:bg-slate-950/80"
               >
                 <Download className="h-4 w-4 text-primary" />
                 Export Operational Summary
@@ -581,7 +581,7 @@ function App() {
               <button
                 type="button"
                 onClick={() => setIsDarkMode((value) => !value)}
-                className="inline-flex items-center justify-center rounded-[1.5rem] border border-white/45 bg-background/80 p-3 shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.04]"
+                className="inline-flex items-center justify-center rounded-[1.5rem] border border-white/45 bg-background/80 p-3 shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.04] dark:border-slate-700 dark:bg-slate-950/80"
                 aria-label={isDarkMode ? "Enable light mode" : "Enable dark mode"}
               >
                 {isDarkMode ? (
@@ -594,7 +594,7 @@ function App() {
           </div>
 
           <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-            <div className="rounded-[1.75rem] border border-white/40 bg-background/80 p-4 shadow-[var(--shadow-recessed)]">
+            <div className="rounded-[1.75rem] border border-white/40 bg-background/80 p-4 shadow-[var(--shadow-recessed)] dark:border-slate-700/80 dark:bg-slate-950/55">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                   Active Story Scenario
@@ -612,7 +612,7 @@ function App() {
                     className={`rounded-2xl border px-4 py-2 text-sm font-medium transition-transform hover:scale-[1.02] ${
                       scenario === key
                         ? "border-primary bg-primary text-white"
-                        : "border-slate-200 bg-white text-slate-700"
+                        : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
                     }`}
                   >
                     {key.toUpperCase()}
@@ -624,7 +624,7 @@ function App() {
               </p>
             </div>
 
-            <div className="rounded-[1.75rem] border border-white/40 bg-background/80 p-4 shadow-[var(--shadow-recessed)]">
+            <div className="rounded-[1.75rem] border border-white/40 bg-background/80 p-4 shadow-[var(--shadow-recessed)] dark:border-slate-700/80 dark:bg-slate-950/55">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                   Active Subsidiary
@@ -640,7 +640,7 @@ function App() {
                     className={`rounded-2xl border px-4 py-3 text-left text-sm font-medium transition-transform hover:scale-[1.01] ${
                       selectedSubsidiary === name
                         ? "border-primary bg-primary text-white"
-                        : "border-slate-200 bg-white text-slate-700"
+                        : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
                     }`}
                   >
                     {name}
@@ -659,7 +659,7 @@ function App() {
                 className={`rounded-[1.5rem] border px-4 py-3 text-left transition-transform hover:scale-[1.01] ${
                   module === key
                     ? "border-primary bg-primary text-white"
-                    : "border-white/40 bg-background/80 text-slate-700"
+                    : "border-white/40 bg-background/80 text-slate-700 dark:border-slate-700 dark:bg-slate-950/65 dark:text-slate-100"
                 }`}
               >
                 <div className="text-xs uppercase tracking-[0.18em] opacity-70">
@@ -695,7 +695,7 @@ function App() {
                     key={stat.label}
                     type="button"
                     onClick={stat.onClick}
-                    className="rounded-[1.75rem] border border-white/45 bg-background/85 p-5 text-left shadow-[var(--shadow-elevated)] transition-transform hover:-translate-y-1 hover:scale-[1.01]"
+                    className="rounded-[1.75rem] border border-white/45 bg-background/85 p-5 text-left shadow-[var(--shadow-elevated)] transition-transform hover:-translate-y-1 hover:scale-[1.01] dark:border-slate-700 dark:bg-slate-950/70"
                   >
                     <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
                       {stat.label}
@@ -715,7 +715,7 @@ function App() {
               </div>
 
               <div className="mt-8 grid gap-6 xl:grid-cols-[1.3fr_1fr]">
-                <div className="rounded-[1.75rem] border border-white/45 bg-background/85 p-5 shadow-[var(--shadow-elevated)]">
+                <div className="rounded-[1.75rem] border border-white/45 bg-background/85 p-5 shadow-[var(--shadow-elevated)] dark:border-slate-700 dark:bg-slate-950/70">
                   <div className="mb-4 flex items-center gap-3">
                     <Landmark className="h-5 w-5 text-primary" />
                     <h3 className="text-lg font-semibold">Customer-led Use Cases</h3>
@@ -726,7 +726,7 @@ function App() {
                         key={playbook.id}
                         type="button"
                         onClick={playbook.action}
-                        className="w-full rounded-[1.5rem] border border-slate-200 bg-white p-4 text-left transition-transform hover:scale-[1.01]"
+                        className="w-full rounded-[1.5rem] border border-slate-200 bg-white p-4 text-left transition-transform hover:scale-[1.01] dark:border-slate-700 dark:bg-slate-900/80"
                       >
                         <div className="flex items-start justify-between gap-4">
                           <div>
@@ -742,7 +742,7 @@ function App() {
                   </div>
                 </div>
 
-                <div className="rounded-[1.75rem] border border-white/45 bg-background/85 p-5 shadow-[var(--shadow-elevated)]">
+                <div className="rounded-[1.75rem] border border-white/45 bg-background/85 p-5 shadow-[var(--shadow-elevated)] dark:border-slate-700 dark:bg-slate-950/70">
                   <div className="mb-4 flex items-center gap-3">
                     <AlertTriangle className="h-5 w-5 text-destructive" />
                     <h3 className="text-lg font-semibold">Current Story Trigger</h3>
@@ -763,7 +763,7 @@ function App() {
                             setSelectedDocumentId(document.id);
                             setModule("entity-vault");
                           }}
-                          className="w-full rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3 text-left transition-transform hover:scale-[1.01]"
+                          className="w-full rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3 text-left transition-transform hover:scale-[1.01] dark:border-slate-700 dark:bg-slate-900/80"
                         >
                           <div className="flex items-center justify-between gap-3">
                             <div>
@@ -803,7 +803,7 @@ function App() {
                       className={`w-full rounded-[1.6rem] border p-5 text-left shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.01] ${
                         selectedDocument?.id === document.id
                           ? "border-primary bg-primary/5"
-                          : "border-white/45 bg-background/85"
+                          : "border-white/45 bg-background/85 dark:border-slate-700 dark:bg-slate-950/70"
                       }`}
                     >
                       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -861,11 +861,11 @@ function App() {
                       <InfoCard label="Expiry Date">{formatDate(selectedDocument.expiryDate)}</InfoCard>
                     </div>
 
-                    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
+                    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/80">
                       <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                         What This Story Proves
                       </p>
-                      <p className="mt-2 text-sm text-slate-700">
+                      <p className="mt-2 text-sm text-slate-700 dark:text-slate-100">
                         {selectedDocument.journeyLabel} is not isolated. This record links to
                         specific people and actions needed to keep the subsidiary operational.
                       </p>
@@ -901,7 +901,7 @@ function App() {
                       />
                     </div>
 
-                    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
+                    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/80">
                       <div className="mb-3 flex items-center gap-2">
                         <Users className="h-4 w-4 text-primary" />
                         <p className="font-medium">Linked Workforce Records</p>
@@ -915,7 +915,7 @@ function App() {
                               setSelectedEmployeeId(employee.id);
                               setModule("workforce");
                             }}
-                            className="w-full rounded-[1.1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-transform hover:scale-[1.01]"
+                            className="w-full rounded-[1.1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-transform hover:scale-[1.01] dark:border-slate-700 dark:bg-slate-800/80"
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div>
@@ -957,7 +957,7 @@ function App() {
                       className={`w-full rounded-[1.6rem] border p-5 text-left shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.01] ${
                         selectedEmployee?.id === employee.id
                           ? "border-primary bg-primary/5"
-                          : "border-white/45 bg-background/85"
+                          : "border-white/45 bg-background/85 dark:border-slate-700 dark:bg-slate-950/70"
                       }`}
                     >
                       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -1044,7 +1044,7 @@ function App() {
                       />
                     </div>
 
-                    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
+                    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/80">
                       <div className="mb-3 flex items-center gap-2">
                         <Building2 className="h-4 w-4 text-primary" />
                         <p className="font-medium">Linked Entity Dependencies</p>
@@ -1058,7 +1058,7 @@ function App() {
                               setSelectedDocumentId(document.id);
                               setModule("entity-vault");
                             }}
-                            className="w-full rounded-[1.1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-transform hover:scale-[1.01]"
+                            className="w-full rounded-[1.1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-transform hover:scale-[1.01] dark:border-slate-700 dark:bg-slate-800/80"
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div>
@@ -1095,7 +1095,7 @@ function App() {
                   {openTasks.map((task) => (
                     <div
                       key={task.id}
-                      className="rounded-[1.5rem] border border-white/45 bg-background/85 p-5 shadow-[var(--shadow-elevated)]"
+                      className="rounded-[1.5rem] border border-white/45 bg-background/85 p-5 shadow-[var(--shadow-elevated)] dark:border-slate-700 dark:bg-slate-950/70"
                     >
                       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                         <div>
@@ -1158,7 +1158,7 @@ function App() {
                   {demoState.notifications.map((notification) => (
                     <div
                       key={notification.id}
-                      className="rounded-[1.4rem] border border-slate-200 bg-white p-4"
+                      className="rounded-[1.4rem] border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/80"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -1213,7 +1213,7 @@ function App() {
                   {demoState.activities.map((activity) => (
                     <div
                       key={activity.id}
-                      className="rounded-[1.4rem] border border-white/45 bg-background/85 p-5 shadow-[var(--shadow-elevated)]"
+                      className="rounded-[1.4rem] border border-white/45 bg-background/85 p-5 shadow-[var(--shadow-elevated)] dark:border-slate-700 dark:bg-slate-950/70"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -1247,11 +1247,11 @@ function App() {
                   ].map((line) => (
                     <div
                       key={line}
-                      className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4"
+                      className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4 dark:border-slate-700 dark:bg-slate-900/80"
                     >
                       <div className="flex items-start gap-3">
                         <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                        <p className="text-sm text-slate-700">{line}</p>
+                        <p className="text-sm text-slate-700 dark:text-slate-100">{line}</p>
                       </div>
                     </div>
                   ))}
@@ -1267,11 +1267,11 @@ function App() {
 
 function InfoCard(props: { label: string; children: ReactNode }) {
   return (
-    <div className="rounded-[1.1rem] bg-slate-50 p-4">
+    <div className="rounded-[1.1rem] bg-slate-50 p-4 dark:bg-slate-900/75">
       <div className="mb-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
         {props.label}
       </div>
-      <div className="text-sm font-medium text-slate-700">{props.children}</div>
+      <div className="text-sm font-medium text-slate-700 dark:text-slate-100">{props.children}</div>
     </div>
   );
 }
