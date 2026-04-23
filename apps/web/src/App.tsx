@@ -94,33 +94,33 @@ function addNotification(
   };
 }
 
-function getPriorityClasses(priority: Priority) {
+function getPriorityClasses(priority: Priority, isDarkMode: boolean) {
   switch (priority) {
     case "critical":
       return "bg-destructive text-white";
     case "high":
-      return "bg-amber-500 text-slate-950 dark:bg-amber-400/20 dark:text-amber-100";
+      return isDarkMode ? "bg-amber-400/20 text-amber-100" : "bg-amber-500 text-slate-950";
     case "medium":
       return "bg-primary text-white";
     default:
-      return "bg-slate-200 text-slate-700 dark:bg-slate-700/70 dark:text-slate-100";
+      return isDarkMode ? "bg-slate-700/70 text-slate-100" : "bg-slate-200 text-slate-700";
   }
 }
 
-function getStatusTone(status: RecordStatus) {
+function getStatusTone(status: RecordStatus, isDarkMode: boolean) {
   switch (status) {
     case "active":
-      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-100";
+      return isDarkMode ? "bg-emerald-400/20 text-emerald-100" : "bg-emerald-100 text-emerald-700";
     case "expiring-soon":
-      return "bg-amber-100 text-amber-700 dark:bg-amber-400/20 dark:text-amber-100";
+      return isDarkMode ? "bg-amber-400/20 text-amber-100" : "bg-amber-100 text-amber-700";
     case "renewal-in-progress":
-      return "bg-sky-100 text-sky-700 dark:bg-sky-400/20 dark:text-sky-100";
+      return isDarkMode ? "bg-sky-400/20 text-sky-100" : "bg-sky-100 text-sky-700";
     case "missing":
-      return "bg-slate-200 text-slate-700 dark:bg-slate-700/70 dark:text-slate-100";
+      return isDarkMode ? "bg-slate-700/70 text-slate-100" : "bg-slate-200 text-slate-700";
     case "overdue":
-      return "bg-rose-100 text-rose-700 dark:bg-rose-400/20 dark:text-rose-100";
+      return isDarkMode ? "bg-rose-400/20 text-rose-100" : "bg-rose-100 text-rose-700";
     default:
-      return "bg-slate-200 text-slate-700 dark:bg-slate-700/70 dark:text-slate-100";
+      return isDarkMode ? "bg-slate-700/70 text-slate-100" : "bg-slate-200 text-slate-700";
   }
 }
 
@@ -139,9 +139,16 @@ function Surface(props: {
   description: string;
   action?: ReactNode;
   children: ReactNode;
+  isDarkMode: boolean;
 }) {
+  const shellClass = props.isDarkMode
+    ? "border-slate-700/80 bg-[rgba(9,17,31,0.82)]"
+    : "border-white/40 bg-[rgba(248,250,252,0.74)]";
+
   return (
-    <section className="rounded-[2rem] border border-white/40 bg-[rgba(248,250,252,0.74)] p-6 shadow-[var(--shadow-soft)] backdrop-blur dark:border-slate-700/80 dark:bg-[rgba(9,17,31,0.82)]">
+    <section
+      className={`rounded-[2rem] border p-6 shadow-[var(--shadow-soft)] backdrop-blur ${shellClass}`}
+    >
       <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h2
@@ -165,12 +172,17 @@ function PanelButton(props: {
   label: string;
   onClick: () => void;
   tone?: "primary" | "secondary" | "ghost";
+  isDarkMode: boolean;
 }) {
   const tone =
     props.tone === "secondary"
-      ? "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
+      ? props.isDarkMode
+        ? "border-slate-700 bg-slate-900/82 text-slate-100"
+        : "border-slate-200 bg-white text-slate-700"
       : props.tone === "ghost"
-        ? "border-transparent bg-transparent text-primary dark:text-emerald-300"
+        ? props.isDarkMode
+          ? "border-transparent bg-transparent text-emerald-300"
+          : "border-transparent bg-transparent text-primary"
         : "border-primary bg-primary text-white";
 
   return (
@@ -546,11 +558,37 @@ function App() {
   const unresolvedNotifications = demoState.notifications.filter(
     (notification) => notification.status === "new",
   );
+  const heroShellClass = isDarkMode
+    ? "border-slate-700/80 bg-[linear-gradient(135deg,rgba(8,17,31,0.92),rgba(15,23,42,0.8))]"
+    : "border-white/35 bg-[linear-gradient(135deg,rgba(248,250,252,0.78),rgba(226,232,240,0.48))]";
+  const recessedPanelClass = isDarkMode
+    ? "border-slate-700/80 bg-slate-950/55"
+    : "border-white/40 bg-background/80";
+  const elevatedPanelClass = isDarkMode
+    ? "border-slate-700 bg-slate-950/70"
+    : "border-white/45 bg-background/85";
+  const solidCardClass = isDarkMode
+    ? "border-slate-700 bg-slate-900/82 text-slate-100"
+    : "border-slate-200 bg-white text-slate-700";
+  const mutedCardClass = isDarkMode
+    ? "border-slate-700 bg-slate-800/82 text-slate-100"
+    : "border-slate-200 bg-slate-50 text-slate-700";
+  const utilityButtonClass = isDarkMode
+    ? "border-slate-700 bg-slate-950/80"
+    : "border-white/45 bg-background/80";
+  const inactiveSegmentClass = isDarkMode
+    ? "border-slate-700 bg-slate-900/82 text-slate-100"
+    : "border-slate-200 bg-white text-slate-700";
+  const inactiveSurfaceTabClass = isDarkMode
+    ? "border-slate-700 bg-slate-950/65 text-slate-100"
+    : "border-white/40 bg-background/80 text-slate-700";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto min-h-screen max-w-[1720px] px-5 py-6 sm:px-8 lg:px-10">
-        <header className="mb-8 rounded-[2rem] border border-white/35 bg-[linear-gradient(135deg,rgba(248,250,252,0.78),rgba(226,232,240,0.48))] p-6 shadow-[var(--shadow-soft)] backdrop-blur dark:border-slate-700/80 dark:bg-[linear-gradient(135deg,rgba(8,17,31,0.92),rgba(15,23,42,0.8))]">
+        <header
+          className={`mb-8 rounded-[2rem] border p-6 shadow-[var(--shadow-soft)] backdrop-blur ${heroShellClass}`}
+        >
           <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <h1
@@ -572,7 +610,7 @@ function App() {
               <button
                 type="button"
                 onClick={exportDemoReport}
-                className="inline-flex items-center justify-center gap-2 rounded-[1.5rem] border border-white/45 bg-background/80 px-5 py-3 text-sm font-medium shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.02] dark:border-slate-700 dark:bg-slate-950/80"
+                className={`inline-flex items-center justify-center gap-2 rounded-[1.5rem] border px-5 py-3 text-sm font-medium shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.02] ${utilityButtonClass}`}
               >
                 <Download className="h-4 w-4 text-primary" />
                 Export Operational Summary
@@ -581,7 +619,7 @@ function App() {
               <button
                 type="button"
                 onClick={() => setIsDarkMode((value) => !value)}
-                className="inline-flex items-center justify-center rounded-[1.5rem] border border-white/45 bg-background/80 p-3 shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.04] dark:border-slate-700 dark:bg-slate-950/80"
+                className={`inline-flex items-center justify-center rounded-[1.5rem] border p-3 shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.04] ${utilityButtonClass}`}
                 aria-label={isDarkMode ? "Enable light mode" : "Enable dark mode"}
               >
                 {isDarkMode ? (
@@ -594,7 +632,9 @@ function App() {
           </div>
 
           <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-            <div className="rounded-[1.75rem] border border-white/40 bg-background/80 p-4 shadow-[var(--shadow-recessed)] dark:border-slate-700/80 dark:bg-slate-950/55">
+            <div
+              className={`rounded-[1.75rem] border p-4 shadow-[var(--shadow-recessed)] ${recessedPanelClass}`}
+            >
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                   Active Story Scenario
@@ -612,7 +652,7 @@ function App() {
                     className={`rounded-2xl border px-4 py-2 text-sm font-medium transition-transform hover:scale-[1.02] ${
                       scenario === key
                         ? "border-primary bg-primary text-white"
-                        : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
+                        : inactiveSegmentClass
                     }`}
                   >
                     {key.toUpperCase()}
@@ -624,7 +664,9 @@ function App() {
               </p>
             </div>
 
-            <div className="rounded-[1.75rem] border border-white/40 bg-background/80 p-4 shadow-[var(--shadow-recessed)] dark:border-slate-700/80 dark:bg-slate-950/55">
+            <div
+              className={`rounded-[1.75rem] border p-4 shadow-[var(--shadow-recessed)] ${recessedPanelClass}`}
+            >
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                   Active Subsidiary
@@ -640,7 +682,7 @@ function App() {
                     className={`rounded-2xl border px-4 py-3 text-left text-sm font-medium transition-transform hover:scale-[1.01] ${
                       selectedSubsidiary === name
                         ? "border-primary bg-primary text-white"
-                        : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
+                        : inactiveSegmentClass
                     }`}
                   >
                     {name}
@@ -659,7 +701,7 @@ function App() {
                 className={`rounded-[1.5rem] border px-4 py-3 text-left transition-transform hover:scale-[1.01] ${
                   module === key
                     ? "border-primary bg-primary text-white"
-                    : "border-white/40 bg-background/80 text-slate-700 dark:border-slate-700 dark:bg-slate-950/65 dark:text-slate-100"
+                    : inactiveSurfaceTabClass
                 }`}
               >
                 <div className="text-xs uppercase tracking-[0.18em] opacity-70">
@@ -682,6 +724,7 @@ function App() {
             <Surface
               title="Command Center"
               description="The command center starts the story, then routes the user into the right operating surface. Every card below is alive."
+              isDarkMode={isDarkMode}
               action={
                 <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
                   <Bell className="h-4 w-4" />
@@ -695,7 +738,7 @@ function App() {
                     key={stat.label}
                     type="button"
                     onClick={stat.onClick}
-                    className="rounded-[1.75rem] border border-white/45 bg-background/85 p-5 text-left shadow-[var(--shadow-elevated)] transition-transform hover:-translate-y-1 hover:scale-[1.01] dark:border-slate-700 dark:bg-slate-950/70"
+                    className={`rounded-[1.75rem] border p-5 text-left shadow-[var(--shadow-elevated)] transition-transform hover:-translate-y-1 hover:scale-[1.01] ${elevatedPanelClass}`}
                   >
                     <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
                       {stat.label}
@@ -715,7 +758,9 @@ function App() {
               </div>
 
               <div className="mt-8 grid gap-6 xl:grid-cols-[1.3fr_1fr]">
-                <div className="rounded-[1.75rem] border border-white/45 bg-background/85 p-5 shadow-[var(--shadow-elevated)] dark:border-slate-700 dark:bg-slate-950/70">
+                <div
+                  className={`rounded-[1.75rem] border p-5 shadow-[var(--shadow-elevated)] ${elevatedPanelClass}`}
+                >
                   <div className="mb-4 flex items-center gap-3">
                     <Landmark className="h-5 w-5 text-primary" />
                     <h3 className="text-lg font-semibold">Customer-led Use Cases</h3>
@@ -726,7 +771,7 @@ function App() {
                         key={playbook.id}
                         type="button"
                         onClick={playbook.action}
-                        className="w-full rounded-[1.5rem] border border-slate-200 bg-white p-4 text-left transition-transform hover:scale-[1.01] dark:border-slate-700 dark:bg-slate-900/80"
+                        className={`w-full rounded-[1.5rem] border p-4 text-left transition-transform hover:scale-[1.01] ${solidCardClass}`}
                       >
                         <div className="flex items-start justify-between gap-4">
                           <div>
@@ -742,7 +787,9 @@ function App() {
                   </div>
                 </div>
 
-                <div className="rounded-[1.75rem] border border-white/45 bg-background/85 p-5 shadow-[var(--shadow-elevated)] dark:border-slate-700 dark:bg-slate-950/70">
+                <div
+                  className={`rounded-[1.75rem] border p-5 shadow-[var(--shadow-elevated)] ${elevatedPanelClass}`}
+                >
                   <div className="mb-4 flex items-center gap-3">
                     <AlertTriangle className="h-5 w-5 text-destructive" />
                     <h3 className="text-lg font-semibold">Current Story Trigger</h3>
@@ -763,7 +810,7 @@ function App() {
                             setSelectedDocumentId(document.id);
                             setModule("entity-vault");
                           }}
-                          className="w-full rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3 text-left transition-transform hover:scale-[1.01] dark:border-slate-700 dark:bg-slate-900/80"
+                          className={`w-full rounded-[1.25rem] border px-4 py-3 text-left transition-transform hover:scale-[1.01] ${solidCardClass}`}
                         >
                           <div className="flex items-center justify-between gap-3">
                             <div>
@@ -775,6 +822,7 @@ function App() {
                             <span
                               className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${getStatusTone(
                                 document.status,
+                                isDarkMode,
                               )}`}
                             >
                               {document.status.replace(/-/g, " ")}
@@ -793,6 +841,7 @@ function App() {
               <Surface
                 title="Entity Vault"
                 description="This is where CR, ZATCA, Baladiyah, GOSI, Salamah, and related operating records become a real workflow rather than a dead card."
+                isDarkMode={isDarkMode}
               >
                 <div className="space-y-4">
                   {subsidiaryDocuments.map((document) => (
@@ -803,7 +852,7 @@ function App() {
                       className={`w-full rounded-[1.6rem] border p-5 text-left shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.01] ${
                         selectedDocument?.id === document.id
                           ? "border-primary bg-primary/5"
-                          : "border-white/45 bg-background/85 dark:border-slate-700 dark:bg-slate-950/70"
+                          : elevatedPanelClass
                       }`}
                     >
                       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -825,6 +874,7 @@ function App() {
                           <span
                             className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${getStatusTone(
                               document.status,
+                              isDarkMode,
                             )}`}
                           >
                             {document.status.replace(/-/g, " ")}
@@ -842,10 +892,12 @@ function App() {
               <Surface
                 title={selectedDocument?.title ?? "Document Detail"}
                 description="The detail pane is the heart of the story. Actions here update the Action Center, Governance Trail, and linked workforce records."
+                isDarkMode={isDarkMode}
                 action={
                   <span
                     className={`rounded-full px-4 py-2 text-xs font-semibold uppercase ${getStatusTone(
                       selectedDocument?.status ?? "active",
+                      isDarkMode,
                     )}`}
                   >
                     {selectedDocument?.status.replace(/-/g, " ") ?? "active"}
@@ -855,17 +907,17 @@ function App() {
                 {selectedDocument ? (
                   <div className="space-y-5">
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <InfoCard label="Authority">{selectedDocument.authority}</InfoCard>
-                      <InfoCard label="Document No.">{selectedDocument.number}</InfoCard>
-                      <InfoCard label="Issue Date">{formatDate(selectedDocument.issueDate)}</InfoCard>
-                      <InfoCard label="Expiry Date">{formatDate(selectedDocument.expiryDate)}</InfoCard>
+                      <InfoCard label="Authority" isDarkMode={isDarkMode}>{selectedDocument.authority}</InfoCard>
+                      <InfoCard label="Document No." isDarkMode={isDarkMode}>{selectedDocument.number}</InfoCard>
+                      <InfoCard label="Issue Date" isDarkMode={isDarkMode}>{formatDate(selectedDocument.issueDate)}</InfoCard>
+                      <InfoCard label="Expiry Date" isDarkMode={isDarkMode}>{formatDate(selectedDocument.expiryDate)}</InfoCard>
                     </div>
 
-                    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/80">
+                    <div className={`rounded-[1.5rem] border p-4 ${solidCardClass}`}>
                       <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                         What This Story Proves
                       </p>
-                      <p className="mt-2 text-sm text-slate-700 dark:text-slate-100">
+                      <p className={`mt-2 text-sm ${isDarkMode ? "text-slate-100" : "text-slate-700"}`}>
                         {selectedDocument.journeyLabel} is not isolated. This record links to
                         specific people and actions needed to keep the subsidiary operational.
                       </p>
@@ -874,11 +926,13 @@ function App() {
                     <div className="flex flex-wrap gap-2">
                       <PanelButton
                         label="Assign Owner"
+                        isDarkMode={isDarkMode}
                         onClick={() => assignDocumentOwner(selectedDocument.id)}
                       />
                       <PanelButton
                         label="Queue Reminder"
                         tone="secondary"
+                        isDarkMode={isDarkMode}
                         onClick={() =>
                           createReminderTask(
                             `Send reminder for ${selectedDocument.title}`,
@@ -892,16 +946,18 @@ function App() {
                       <PanelButton
                         label="Start Renewal"
                         tone="secondary"
+                        isDarkMode={isDarkMode}
                         onClick={() => startDocumentRenewal(selectedDocument.id)}
                       />
                       <PanelButton
                         label="Upload Renewal"
                         tone="ghost"
+                        isDarkMode={isDarkMode}
                         onClick={() => uploadRenewedDocument(selectedDocument.id)}
                       />
                     </div>
 
-                    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/80">
+                    <div className={`rounded-[1.5rem] border p-4 ${solidCardClass}`}>
                       <div className="mb-3 flex items-center gap-2">
                         <Users className="h-4 w-4 text-primary" />
                         <p className="font-medium">Linked Workforce Records</p>
@@ -915,7 +971,7 @@ function App() {
                               setSelectedEmployeeId(employee.id);
                               setModule("workforce");
                             }}
-                            className="w-full rounded-[1.1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-transform hover:scale-[1.01] dark:border-slate-700 dark:bg-slate-800/80"
+                            className={`w-full rounded-[1.1rem] border px-4 py-3 text-left transition-transform hover:scale-[1.01] ${mutedCardClass}`}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div>
@@ -927,6 +983,7 @@ function App() {
                               <span
                                 className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${getStatusTone(
                                   employee.status,
+                                  isDarkMode,
                                 )}`}
                               >
                                 {employee.status.replace(/-/g, " ")}
@@ -947,6 +1004,7 @@ function App() {
               <Surface
                 title="Workforce Portal"
                 description="Workforce legal documents are showcased as an operational journey, connected back to Baladiyah, CR, ZATCA, and government-facing entity records."
+                isDarkMode={isDarkMode}
               >
                 <div className="space-y-4">
                   {subsidiaryWorkforce.map((employee) => (
@@ -957,7 +1015,7 @@ function App() {
                       className={`w-full rounded-[1.6rem] border p-5 text-left shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.01] ${
                         selectedEmployee?.id === employee.id
                           ? "border-primary bg-primary/5"
-                          : "border-white/45 bg-background/85 dark:border-slate-700 dark:bg-slate-950/70"
+                          : elevatedPanelClass
                       }`}
                     >
                       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -979,6 +1037,7 @@ function App() {
                           <span
                             className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${getStatusTone(
                               employee.status,
+                              isDarkMode,
                             )}`}
                           >
                             {employee.status.replace(/-/g, " ")}
@@ -996,10 +1055,12 @@ function App() {
               <Surface
                 title={selectedEmployee?.employeeName ?? "Workforce Detail"}
                 description="Actions here create a visible bridge between employee legal files and the entity records needed for real-world operations."
+                isDarkMode={isDarkMode}
                 action={
                   <span
                     className={`rounded-full px-4 py-2 text-xs font-semibold uppercase ${getStatusTone(
                       selectedEmployee?.status ?? "active",
+                      isDarkMode,
                     )}`}
                   >
                     {selectedEmployee?.status.replace(/-/g, " ") ?? "active"}
@@ -1009,12 +1070,12 @@ function App() {
                 {selectedEmployee ? (
                   <div className="space-y-5">
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <InfoCard label="Iqama No.">{selectedEmployee.iqamaNumber}</InfoCard>
-                      <InfoCard label="Iqama Expiry">
+                      <InfoCard label="Iqama No." isDarkMode={isDarkMode}>{selectedEmployee.iqamaNumber}</InfoCard>
+                      <InfoCard label="Iqama Expiry" isDarkMode={isDarkMode}>
                         {formatDate(selectedEmployee.iqamaExpiry)}
                       </InfoCard>
-                      <InfoCard label="Permit No.">{selectedEmployee.workPermitNumber}</InfoCard>
-                      <InfoCard label="Permit Expiry">
+                      <InfoCard label="Permit No." isDarkMode={isDarkMode}>{selectedEmployee.workPermitNumber}</InfoCard>
+                      <InfoCard label="Permit Expiry" isDarkMode={isDarkMode}>
                         {formatDate(selectedEmployee.workPermitExpiry)}
                       </InfoCard>
                     </div>
@@ -1022,11 +1083,13 @@ function App() {
                     <div className="flex flex-wrap gap-2">
                       <PanelButton
                         label="Assign HR Owner"
+                        isDarkMode={isDarkMode}
                         onClick={() => assignEmployeeOwner(selectedEmployee.id)}
                       />
                       <PanelButton
                         label="Queue Reminder"
                         tone="secondary"
+                        isDarkMode={isDarkMode}
                         onClick={() =>
                           createReminderTask(
                             `Prepare legal file for ${selectedEmployee.employeeName}`,
@@ -1040,11 +1103,12 @@ function App() {
                       <PanelButton
                         label="Upload New Copy"
                         tone="ghost"
+                        isDarkMode={isDarkMode}
                         onClick={() => renewEmployeeRecord(selectedEmployee.id)}
                       />
                     </div>
 
-                    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/80">
+                    <div className={`rounded-[1.5rem] border p-4 ${solidCardClass}`}>
                       <div className="mb-3 flex items-center gap-2">
                         <Building2 className="h-4 w-4 text-primary" />
                         <p className="font-medium">Linked Entity Dependencies</p>
@@ -1058,7 +1122,7 @@ function App() {
                               setSelectedDocumentId(document.id);
                               setModule("entity-vault");
                             }}
-                            className="w-full rounded-[1.1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-transform hover:scale-[1.01] dark:border-slate-700 dark:bg-slate-800/80"
+                            className={`w-full rounded-[1.1rem] border px-4 py-3 text-left transition-transform hover:scale-[1.01] ${mutedCardClass}`}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div>
@@ -1070,6 +1134,7 @@ function App() {
                               <span
                                 className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${getStatusTone(
                                   document.status,
+                                  isDarkMode,
                                 )}`}
                               >
                                 {document.status.replace(/-/g, " ")}
@@ -1090,12 +1155,13 @@ function App() {
               <Surface
                 title="Action Center"
                 description="This turns reminders, assignments, and escalations into the visible operating layer of the platform."
+                isDarkMode={isDarkMode}
               >
                 <div className="space-y-4">
                   {openTasks.map((task) => (
                     <div
                       key={task.id}
-                      className="rounded-[1.5rem] border border-white/45 bg-background/85 p-5 shadow-[var(--shadow-elevated)] dark:border-slate-700 dark:bg-slate-950/70"
+                      className={`rounded-[1.5rem] border p-5 shadow-[var(--shadow-elevated)] ${elevatedPanelClass}`}
                     >
                       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                         <div>
@@ -1110,6 +1176,7 @@ function App() {
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${getPriorityClasses(
                             task.priority,
+                            isDarkMode,
                           )}`}
                         >
                           {task.priority}
@@ -1118,11 +1185,13 @@ function App() {
                       <div className="mt-4 flex flex-wrap gap-2">
                         <PanelButton
                           label="Escalate"
+                          isDarkMode={isDarkMode}
                           onClick={() => escalateTask(task.id)}
                         />
                         <PanelButton
                           label="Open Related Record"
                           tone="secondary"
+                          isDarkMode={isDarkMode}
                           onClick={() => {
                             if (task.relatedType === "document") {
                               setSelectedDocumentId(task.relatedId);
@@ -1136,6 +1205,7 @@ function App() {
                         <PanelButton
                           label="Mark Complete"
                           tone="ghost"
+                          isDarkMode={isDarkMode}
                           onClick={() => {
                             if (task.relatedType === "document") {
                               uploadRenewedDocument(task.relatedId);
@@ -1153,12 +1223,13 @@ function App() {
               <Surface
                 title="Notification Queue"
                 description="Each reminder or escalation feeds a visible queue, giving the platform momentum, accountability, and consequence."
+                isDarkMode={isDarkMode}
               >
                 <div className="space-y-4">
                   {demoState.notifications.map((notification) => (
                     <div
                       key={notification.id}
-                      className="rounded-[1.4rem] border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/80"
+                      className={`rounded-[1.4rem] border p-4 ${solidCardClass}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -1170,6 +1241,7 @@ function App() {
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${getPriorityClasses(
                             notification.severity,
+                            isDarkMode,
                           )}`}
                         >
                           {notification.severity}
@@ -1187,6 +1259,7 @@ function App() {
                               ? "secondary"
                               : "ghost"
                           }
+                          isDarkMode={isDarkMode}
                           onClick={() => acknowledgeNotification(notification.id)}
                         />
                       </div>
@@ -1202,6 +1275,7 @@ function App() {
               <Surface
                 title="Governance Trail"
                 description="This closes the loop: every action taken in the platform leaves a visible record and becomes exportable for management."
+                isDarkMode={isDarkMode}
                 action={
                   <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
                     <ShieldCheck className="h-4 w-4" />
@@ -1213,7 +1287,7 @@ function App() {
                   {demoState.activities.map((activity) => (
                     <div
                       key={activity.id}
-                      className="rounded-[1.4rem] border border-white/45 bg-background/85 p-5 shadow-[var(--shadow-elevated)] dark:border-slate-700 dark:bg-slate-950/70"
+                      className={`rounded-[1.4rem] border p-5 shadow-[var(--shadow-elevated)] ${elevatedPanelClass}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -1237,6 +1311,7 @@ function App() {
               <Surface
                 title="Narrative Outcomes"
                 description="These are the outcomes the client should immediately understand after reviewing the platform journey."
+                isDarkMode={isDarkMode}
               >
                 <div className="space-y-4">
                   {[
@@ -1247,11 +1322,11 @@ function App() {
                   ].map((line) => (
                     <div
                       key={line}
-                      className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4 dark:border-slate-700 dark:bg-slate-900/80"
+                      className={`rounded-[1.4rem] border px-4 py-4 ${solidCardClass}`}
                     >
                       <div className="flex items-start gap-3">
                         <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                        <p className="text-sm text-slate-700 dark:text-slate-100">{line}</p>
+                        <p className={`text-sm ${isDarkMode ? "text-slate-100" : "text-slate-700"}`}>{line}</p>
                       </div>
                     </div>
                   ))}
@@ -1265,13 +1340,15 @@ function App() {
   );
 }
 
-function InfoCard(props: { label: string; children: ReactNode }) {
+function InfoCard(props: { label: string; children: ReactNode; isDarkMode: boolean }) {
   return (
-    <div className="rounded-[1.1rem] bg-slate-50 p-4 dark:bg-slate-900/75">
+    <div className={`rounded-[1.1rem] p-4 ${props.isDarkMode ? "bg-slate-900/75" : "bg-slate-50"}`}>
       <div className="mb-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
         {props.label}
       </div>
-      <div className="text-sm font-medium text-slate-700 dark:text-slate-100">{props.children}</div>
+      <div className={`text-sm font-medium ${props.isDarkMode ? "text-slate-100" : "text-slate-700"}`}>
+        {props.children}
+      </div>
     </div>
   );
 }
