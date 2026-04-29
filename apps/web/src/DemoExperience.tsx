@@ -23,6 +23,7 @@ import {
 import {
   countStatus,
   createDemoState,
+  getDaysUntilExpiry,
   subsidiaries,
   type DemoActivity,
   type DemoNotification,
@@ -514,6 +515,15 @@ function triggerDownload(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function Surface(props: {
   title: string;
   description: string;
@@ -602,6 +612,10 @@ function DemoExperience() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("emp-retail-ops");
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
+  const [warningWindowDays, setWarningWindowDays] = useState<30 | 60 | 90>(60);
+  const [documentTypeFilter, setDocumentTypeFilter] = useState("all");
+  const [expiryFilter, setExpiryFilter] = useState<"all" | "30" | "60" | "90">("all");
+  const [ownerFilter, setOwnerFilter] = useState("all");
   const [demoState, setDemoState] = useState<DemoState>(() => createDemoState("warning"));
   const isArabic = locale === "ar";
   const t = copy[locale];
@@ -639,12 +653,44 @@ function DemoExperience() {
     );
   }, [locale, scenario]);
 
+  useEffect(() => {
+    setDocumentTypeFilter("all");
+    setExpiryFilter("all");
+    setOwnerFilter("all");
+  }, [selectedSubsidiary]);
+
   const subsidiaryDocuments = useMemo(
     () =>
       demoState.documents.filter(
         (document) => document.subsidiary === selectedSubsidiary,
       ),
     [demoState.documents, selectedSubsidiary],
+  );
+
+  const documentTypeOptions = useMemo(
+    () => Array.from(new Set(subsidiaryDocuments.map((document) => document.documentType))).sort(),
+    [subsidiaryDocuments],
+  );
+
+  const ownerOptions = useMemo(
+    () => Array.from(new Set(subsidiaryDocuments.map((document) => document.owner))).sort(),
+    [subsidiaryDocuments],
+  );
+
+  const filteredSubsidiaryDocuments = useMemo(
+    () =>
+      subsidiaryDocuments.filter((document) => {
+        const matchesType =
+          documentTypeFilter === "all" || document.documentType === documentTypeFilter;
+        const matchesOwner = ownerFilter === "all" || document.owner === ownerFilter;
+        const daysUntilExpiry = getDaysUntilExpiry(document.expiryDate);
+        const matchesExpiry =
+          expiryFilter === "all" ||
+          (daysUntilExpiry >= 0 && daysUntilExpiry <= Number(expiryFilter));
+
+        return matchesType && matchesOwner && matchesExpiry;
+      }),
+    [documentTypeFilter, expiryFilter, ownerFilter, subsidiaryDocuments],
   );
 
   const subsidiaryWorkforce = useMemo(
@@ -847,9 +893,16 @@ function DemoExperience() {
     updateDocument(documentId, (document) => ({
       ...document,
       status: "renewal-in-progress",
+      requiredForRenewal: document.requiredForRenewal.map((item) => ({
+        ...item,
+        status: item.status === "Expired" ? "Pending" : item.status,
+      })),
+      approvalFlow: document.approvalFlow.map((step, index) =>
+        index === 0 ? { ...step, status: "Granted" as const } : step,
+      ),
     }));
     createReminderTask(
-      `Complete renewal for ${selectedDocument?.title ?? "document"}`,
+      `Complete approval flow for ${selectedDocument?.title ?? "document"}`,
       "entity-vault",
       "document",
       documentId,
@@ -858,7 +911,7 @@ function DemoExperience() {
     announce(
       locale === "ar"
         ? "تم بدء رحلة التجديد للسجل الكياني المحدد."
-        : "Renewal journey started for the selected entity record.",
+        : "Renewal journey started with required active attachments and approvals visible.",
     );
   }
 
@@ -866,6 +919,15 @@ function DemoExperience() {
     updateDocument(documentId, (document) => ({
       ...document,
       status: "active",
+      requiredForRenewal: document.requiredForRenewal.map((item) => ({
+        ...item,
+        status: "Active",
+      })),
+      approvalFlow: document.approvalFlow.map((step) => ({
+        ...step,
+        status: "Granted" as const,
+        timestamp: new Date().toISOString().slice(0, 10),
+      })),
       issueDate: new Date().toISOString().slice(0, 10),
       expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
         .toISOString()
@@ -1091,6 +1153,115 @@ function DemoExperience() {
     );
   }
 
+  function generateCourtReadyPdf() {
+    const docs = demoState.documents.filter((document) => document.subsidiary === selectedSubsidiary);
+    const tasks = demoState.tasks.filter((task) =>
+      docs.some((document) => document.id === task.relatedId),
+    );
+    const activities = demoState.activities.slice(0, 12);
+    const generatedAt = new Date().toLocaleString();
+    const rows = docs
+      .map(
+        (document) => `
+          <tr>
+            <td>${escapeHtml(document.referenceNumber)}</td>
+            <td>${escapeHtml(document.title)}</td>
+            <td>${escapeHtml(document.number)}</td>
+            <td>${escapeHtml(document.owner)}</td>
+            <td>${escapeHtml(document.status)}</td>
+            <td>${escapeHtml(document.expiryDate)}</td>
+          </tr>`,
+      )
+      .join("");
+    const approvalRows = docs
+      .flatMap((document) =>
+        document.approvalFlow.map(
+          (step) => `
+            <tr>
+              <td>${escapeHtml(document.referenceNumber)}</td>
+              <td>${escapeHtml(document.title)}</td>
+              <td>${escapeHtml(step.stakeholder)}</td>
+              <td>${escapeHtml(step.status)}</td>
+              <td>${escapeHtml(step.timestamp)}</td>
+            </tr>`,
+        ),
+      )
+      .join("");
+    const taskRows = tasks
+      .map(
+        (task) => `
+          <tr>
+            <td>${escapeHtml(task.title)}</td>
+            <td>${escapeHtml(task.owner)}</td>
+            <td>${escapeHtml(task.status)}</td>
+            <td>${escapeHtml(task.dueDate)}</td>
+          </tr>`,
+      )
+      .join("");
+    const activityRows = activities
+      .map(
+        (activity) => `
+          <tr>
+            <td>${escapeHtml(activity.timestamp.slice(0, 10))}</td>
+            <td>${escapeHtml(activity.title)}</td>
+            <td>${escapeHtml(activity.detail)}</td>
+          </tr>`,
+      )
+      .join("");
+    const reportWindow = window.open("", "_blank", "noopener,noreferrer");
+
+    if (!reportWindow) {
+      announce("Popup blocked. Allow popups to generate the court-ready PDF.");
+      return;
+    }
+
+    reportWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>V-AXIS Court-ready Proof Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #0f172a; margin: 32px; }
+            h1 { font-size: 28px; margin-bottom: 4px; }
+            h2 { border-bottom: 1px solid #cbd5e1; font-size: 17px; margin-top: 28px; padding-bottom: 6px; }
+            table { border-collapse: collapse; margin-top: 12px; width: 100%; }
+            th, td { border: 1px solid #cbd5e1; font-size: 11px; padding: 8px; text-align: left; vertical-align: top; }
+            th { background: #f1f5f9; text-transform: uppercase; }
+            .meta { color: #475569; font-size: 12px; }
+            .seal { border: 2px solid #10b981; display: inline-block; font-size: 11px; font-weight: 700; margin-top: 12px; padding: 8px 10px; text-transform: uppercase; }
+            @media print { button { display: none; } body { margin: 18mm; } }
+          </style>
+        </head>
+        <body>
+          <h1>V-AXIS Court-ready Proof of Task Completion</h1>
+          <p class="meta">Entity: ${escapeHtml(selectedSubsidiary)} | Generated: ${escapeHtml(generatedAt)} | Warning policy: ${warningWindowDays} days</p>
+          <div class="seal">System generated governance record</div>
+          <h2>Document Register</h2>
+          <table><thead><tr><th>Reference</th><th>Document</th><th>Document No.</th><th>Task owner</th><th>Status</th><th>Expiry</th></tr></thead><tbody>${rows}</tbody></table>
+          <h2>Approval Flow</h2>
+          <table><thead><tr><th>Reference</th><th>Document</th><th>Stakeholder</th><th>Approval status</th><th>Date</th></tr></thead><tbody>${approvalRows}</tbody></table>
+          <h2>Task Completion Evidence</h2>
+          <table><thead><tr><th>Task</th><th>Owner</th><th>Status</th><th>Due date</th></tr></thead><tbody>${taskRows || "<tr><td colspan='4'>No open document tasks.</td></tr>"}</tbody></table>
+          <h2>Audit Trail</h2>
+          <table><thead><tr><th>Date</th><th>Event</th><th>Detail</th></tr></thead><tbody>${activityRows}</tbody></table>
+          <button onclick="window.print()">Print / Save as PDF</button>
+          <script>window.onload = () => setTimeout(() => window.print(), 250);</script>
+        </body>
+      </html>
+    `);
+    reportWindow.document.close();
+
+    setDemoState((current) =>
+      appendActivity(
+        current,
+        "Court-ready PDF generated",
+        `A proof report for ${selectedSubsidiary} was generated with document references, approvals, and task evidence.`,
+        "governance-trail",
+      ),
+    );
+    announce("Court-ready PDF report generated with approvals and completion proof.");
+  }
+
   const openTasks = demoState.tasks.filter((task) => task.status !== "done");
   const unresolvedNotifications = demoState.notifications.filter(
     (notification) => notification.status === "new" || notification.status === "escalated",
@@ -1111,6 +1282,9 @@ function DemoExperience() {
     }
     if (value.startsWith("Complete renewal for ")) {
       return `إكمال تجديد ${lTitle(value.replace("Complete renewal for ", ""))}`;
+    }
+    if (value.startsWith("Complete approval flow for ")) {
+      return `إكمال مسار الاعتماد ${lTitle(value.replace("Complete approval flow for ", ""))}`;
     }
     if (value.startsWith("Send reminder for ")) {
       return `إرسال تذكير بخصوص ${lTitle(value.replace("Send reminder for ", ""))}`;
@@ -1306,6 +1480,14 @@ function DemoExperience() {
               >
                 <Download className="h-4 w-4 text-primary" />
                 {t.exportSummary}
+              </button>
+              <button
+                type="button"
+                onClick={generateCourtReadyPdf}
+                className={`inline-flex items-center justify-center gap-2 rounded-[1.5rem] border px-5 py-3 text-sm font-medium shadow-[var(--shadow-elevated)] transition-transform hover:scale-[1.02] ${utilityButtonClass}`}
+              >
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                {isArabic ? "تقرير PDF للإثبات" : "Court-ready PDF"}
               </button>
 
               <button
@@ -1524,6 +1706,37 @@ function DemoExperience() {
                 ))}
               </div>
 
+              <div className={`mt-6 rounded-[1.5rem] border p-5 ${solidCardClass}`}>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      {isArabic ? "تحكم المسؤول في أوقات التحذير" : "Admin warning-time control"}
+                    </p>
+                    <h3 className="mt-1 text-lg font-semibold">
+                      {isArabic
+                        ? `نافذة التحذير الحالية ${warningWindowDays} يوم`
+                        : `Current warning window: ${warningWindowDays} days`}
+                    </h3>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {([30, 60, 90] as const).map((days) => (
+                      <button
+                        key={days}
+                        type="button"
+                        onClick={() => setWarningWindowDays(days)}
+                        className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${
+                          warningWindowDays === days
+                            ? "border-primary bg-primary text-white"
+                            : mutedCardClass
+                        }`}
+                      >
+                        {days} days
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div className="mt-8 grid gap-6 xl:grid-cols-[1.3fr_1fr]">
                 <div
                   className={`rounded-[1.75rem] border p-5 shadow-[var(--shadow-elevated)] ${elevatedPanelClass}`}
@@ -1620,8 +1833,72 @@ function DemoExperience() {
                 description={t.entityVaultDescription}
                 isDarkMode={isDarkMode}
               >
+                <div className={`mb-5 rounded-[1.5rem] border p-4 ${solidCardClass}`}>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    {isArabic ? "استرجاع المستندات" : "Document retrieval"}
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        {isArabic ? "نوع المستند" : "Document Type"}
+                      </span>
+                      <select
+                        value={documentTypeFilter}
+                        onChange={(event) => setDocumentTypeFilter(event.target.value)}
+                        className={`w-full rounded-xl border px-3 py-2 text-sm ${mutedCardClass}`}
+                      >
+                        <option value="all">{isArabic ? "الكل" : "All types"}</option>
+                        {documentTypeOptions.map((type) => (
+                          <option key={type} value={type}>
+                            {type}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        {isArabic ? "مالك المهمة" : "Task owner"}
+                      </span>
+                      <select
+                        value={ownerFilter}
+                        onChange={(event) => setOwnerFilter(event.target.value)}
+                        className={`w-full rounded-xl border px-3 py-2 text-sm ${mutedCardClass}`}
+                      >
+                        <option value="all">{isArabic ? "كل المالكين" : "All owners"}</option>
+                        {ownerOptions.map((owner) => (
+                          <option key={owner} value={owner}>
+                            {owner}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        {isArabic ? "تاريخ الانتهاء" : "Date of Expiry"}
+                      </span>
+                      <select
+                        value={expiryFilter}
+                        onChange={(event) =>
+                          setExpiryFilter(event.target.value as typeof expiryFilter)
+                        }
+                        className={`w-full rounded-xl border px-3 py-2 text-sm ${mutedCardClass}`}
+                      >
+                        <option value="all">{isArabic ? "كل التواريخ" : "All dates"}</option>
+                        <option value="30">Less than 30 days</option>
+                        <option value="60">Less than 60 days</option>
+                        <option value="90">Less than 90 days</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {isArabic
+                      ? `الكيان الحالي: ${lSubsidiary(selectedSubsidiary)}`
+                      : `Entity filter: ${selectedSubsidiary}`}
+                  </p>
+                </div>
+
                 <div className="space-y-4">
-                  {subsidiaryDocuments.map((document) => (
+                  {filteredSubsidiaryDocuments.map((document) => (
                     <button
                       key={document.id}
                       type="button"
@@ -1640,7 +1917,7 @@ function DemoExperience() {
                           <div>
                             <p className="font-semibold">{lTitle(document.title)}</p>
                             <p className="mt-1 text-sm text-muted-foreground">
-                              {lAuthority(document.authority)} · {document.number}
+                              {lAuthority(document.authority)} · {document.referenceNumber}
                             </p>
                             <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                               {replaceTemplate(t.ownerLabel, { owner: lOwner(document.owner) })}
@@ -1665,6 +1942,11 @@ function DemoExperience() {
                       </div>
                     </button>
                   ))}
+                  {filteredSubsidiaryDocuments.length === 0 ? (
+                    <div className={`rounded-[1.25rem] border p-5 text-sm text-muted-foreground ${mutedCardClass}`}>
+                      {isArabic ? "لا توجد مستندات مطابقة." : "No documents match the selected retrieval filters."}
+                    </div>
+                  ) : null}
                 </div>
               </Surface>
 
@@ -1688,6 +1970,8 @@ function DemoExperience() {
                     <div className="grid gap-3 sm:grid-cols-2">
                       <InfoCard label={t.authority} isDarkMode={isDarkMode}>{lAuthority(selectedDocument.authority)}</InfoCard>
                       <InfoCard label={t.documentNo} isDarkMode={isDarkMode}>{selectedDocument.number}</InfoCard>
+                      <InfoCard label={isArabic ? "الرقم المرجعي" : "Reference No."} isDarkMode={isDarkMode}>{selectedDocument.referenceNumber}</InfoCard>
+                      <InfoCard label={isArabic ? "نوع المستند" : "Document Type"} isDarkMode={isDarkMode}>{selectedDocument.documentType}</InfoCard>
                       <InfoCard label={t.issueDate} isDarkMode={isDarkMode}>{formatDate(selectedDocument.issueDate, locale)}</InfoCard>
                       <InfoCard label={t.expiryDate} isDarkMode={isDarkMode}>{formatDate(selectedDocument.expiryDate, locale)}</InfoCard>
                     </div>
@@ -1701,6 +1985,70 @@ function DemoExperience() {
                           ? `${lJourney(selectedDocument.journeyLabel)} ليست معزولة. هذا السجل يرتبط بأشخاص وإجراءات محددة لازمة لاستمرار تشغيل الشركة التابعة.`
                           : `${selectedDocument.journeyLabel} is not isolated. This record links to specific people and actions needed to keep the subsidiary operational.`}
                       </p>
+                    </div>
+
+                    <div className={`rounded-[1.5rem] border p-4 ${solidCardClass}`}>
+                      <div className="mb-3 flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-primary" />
+                        <p className="font-medium">
+                          {isArabic ? "حزمة المستندات المطلوبة للتجديد" : "Required documents for renewal"}
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedDocument.requiredForRenewal.map((item) => (
+                          <div
+                            key={`${item.referenceNumber}-${item.title}`}
+                            className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${mutedCardClass}`}
+                          >
+                            <div>
+                              <p className="text-sm font-medium">{item.title}</p>
+                              <p className="text-xs text-muted-foreground">{item.referenceNumber}</p>
+                            </div>
+                            <span
+                              className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${
+                                item.status === "Active"
+                                  ? "bg-emerald-500/10 text-emerald-600"
+                                  : "bg-amber-500/10 text-amber-600"
+                              }`}
+                            >
+                              {item.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className={`rounded-[1.5rem] border p-4 ${solidCardClass}`}>
+                      <div className="mb-3 flex items-center gap-2">
+                        <Clock3 className="h-4 w-4 text-primary" />
+                        <p className="font-medium">
+                          {isArabic ? "مسار الاعتماد" : "Approval flow"}
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedDocument.approvalFlow.map((step) => (
+                          <div
+                            key={`${step.stakeholder}-${step.timestamp}`}
+                            className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${mutedCardClass}`}
+                          >
+                            <div>
+                              <p className="text-sm font-medium">{step.stakeholder}</p>
+                              <p className="text-xs text-muted-foreground">{step.timestamp}</p>
+                            </div>
+                            <span
+                              className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${
+                                step.status === "Granted"
+                                  ? "bg-emerald-500/10 text-emerald-600"
+                                  : step.status === "Escalated"
+                                    ? "bg-rose-500/10 text-rose-600"
+                                    : "bg-amber-500/10 text-amber-600"
+                              }`}
+                            >
+                              {step.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
