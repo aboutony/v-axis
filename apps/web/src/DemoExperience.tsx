@@ -1535,16 +1535,27 @@ function DemoExperience() {
                         key={playbook.id}
                         type="button"
                         onClick={playbook.action}
-                        className={`w-full rounded-[1.5rem] border p-4 text-left transition-transform hover:scale-[1.01] ${solidCardClass}`}
+                        className={`w-full rounded-[1.5rem] border p-4 transition-transform hover:scale-[1.01] ${
+                          isArabic ? "text-right" : "text-left"
+                        } ${solidCardClass}`}
+                        dir={isArabic ? "rtl" : "ltr"}
                       >
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
+                        <div
+                          className={`flex items-start justify-between gap-4 ${
+                            isArabic ? "flex-row-reverse" : ""
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
                             <p className="font-semibold">{playbook.title}</p>
                             <p className="mt-1 text-sm text-muted-foreground">
                               {playbook.description}
                             </p>
                           </div>
-                          <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-primary" />
+                          <ArrowRight
+                            className={`mt-1 h-4 w-4 shrink-0 text-primary ${
+                              isArabic ? "rotate-180" : ""
+                            }`}
+                          />
                         </div>
                       </button>
                     ))}
