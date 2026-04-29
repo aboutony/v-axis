@@ -1730,7 +1730,7 @@ function DemoExperience() {
                             : mutedCardClass
                         }`}
                       >
-                        {days} days
+                        {isArabic ? `${days} يوم` : `${days} days`}
                       </button>
                     ))}
                   </div>
@@ -1884,9 +1884,15 @@ function DemoExperience() {
                         className={`w-full rounded-xl border px-3 py-2 text-sm ${mutedCardClass}`}
                       >
                         <option value="all">{isArabic ? "كل التواريخ" : "All dates"}</option>
-                        <option value="30">Less than 30 days</option>
-                        <option value="60">Less than 60 days</option>
-                        <option value="90">Less than 90 days</option>
+                        <option value="30">
+                          {isArabic ? "أقل من 30 يوم" : "Less than 30 days"}
+                        </option>
+                        <option value="60">
+                          {isArabic ? "أقل من 60 يوم" : "Less than 60 days"}
+                        </option>
+                        <option value="90">
+                          {isArabic ? "أقل من 90 يوم" : "Less than 90 days"}
+                        </option>
                       </select>
                     </label>
                   </div>
