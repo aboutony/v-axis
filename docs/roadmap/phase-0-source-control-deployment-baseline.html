@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>V-AXIS Phase 0 - Source Control And Deployment Baseline</title>
+    <style>
+      :root {
+        --ink: #111827;
+        --muted: #4b5563;
+        --line: #d1d5db;
+        --soft: #f3f4f6;
+        --accent: #047857;
+        --warn: #b45309;
+      }
+      body {
+        margin: 0;
+        font-family: Arial, Helvetica, sans-serif;
+        color: var(--ink);
+        background: #ffffff;
+        line-height: 1.55;
+      }
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 44px 28px 72px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 32px;
+        line-height: 1.15;
+      }
+      h2 {
+        margin-top: 32px;
+        padding-top: 16px;
+        border-top: 1px solid var(--line);
+        font-size: 22px;
+      }
+      h3 {
+        margin-top: 22px;
+        font-size: 17px;
+      }
+      p {
+        margin: 10px 0;
+      }
+      ul,
+      ol {
+        padding-left: 24px;
+      }
+      li {
+        margin: 5px 0;
+      }
+      code {
+        background: var(--soft);
+        border-radius: 4px;
+        padding: 2px 5px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0;
+        font-size: 14px;
+      }
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 9px 10px;
+        vertical-align: top;
+        text-align: left;
+      }
+      th {
+        background: var(--soft);
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .callout {
+        border-left: 4px solid var(--accent);
+        background: #ecfdf5;
+        padding: 14px 18px;
+        margin: 18px 0;
+      }
+      .warn {
+        border-left-color: var(--warn);
+        background: #fffbeb;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>V-AXIS Phase 0 - Source Control And Deployment Baseline</h1>
+      <p class="meta">Date: April 28, 2026</p>
+      <p><strong>Status:</strong> In progress. Public and repository-verifiable items are mapped. Render dashboard-only service ownership still requires Render dashboard/API confirmation.</p>
+
+      <section class="callout">
+        <h2>UI/UX Preservation Rule</h2>
+        <p>The current V-AXIS demo UI/UX is a protected baseline. Development work must not overwrite, simplify, or destabilize the demo experience.</p>
+        <ul>
+          <li>Keep the current demo journey intact until a dedicated demo route or deployment is created.</li>
+          <li>Treat UI/UX changes to the demo as approval-required changes.</li>
+          <li>Add demo clickability and visual regression checks before product frontend refactoring.</li>
+          <li>Develop the real product frontend separately from the protected demo entry point.</li>
+          <li>Do not connect the demo to production writes.</li>
+        </ul>
+      </section>
+
+      <h2>Verified GitHub Baseline</h2>
+      <ul>
+        <li>Repository: <code>https://github.com/aboutony/v-axis</code></li>
+        <li>Full name: <code>aboutony/v-axis</code></li>
+        <li>Default branch: <code>main</code></li>
+        <li>Latest verified commit: <code>53f85444f20d211bd5f3bfc3af25ac7e8b693796</code></li>
+        <li>Commit summary: <code>53f8544 Add multi-channel alert center</code></li>
+        <li>Open remote branches found: <code>main</code></li>
+      </ul>
+
+      <h2>Verified Vercel Baseline</h2>
+      <ul>
+        <li>Project name: <code>v-axis-web</code></li>
+        <li>Project ID: <code>prj_tkrbOjbLoklvBLhLF4ydo8Y7QFmw</code></li>
+        <li>Production alias: <code>https://v-axis-web.vercel.app</code></li>
+        <li>Deployment ID: <code>dpl_A9hPKwDcHKzoyPD69TLc4vjfHzg6</code></li>
+        <li>Target: production</li>
+        <li>Status: Ready</li>
+        <li>Created: April 23, 2026, 10:36:08 GMT+0300</li>
+        <li><code>VITE_API_URL</code> exists in Production, Preview, and Development.</li>
+      </ul>
+
+      <h2>Verified Render Baseline</h2>
+      <p><code>render.yaml</code> defines two services: <code>v-axis-api</code> as a web service and <code>v-axis-worker</code> as a worker.</p>
+      <ul>
+        <li><code>https://v-axis-api.onrender.com/health</code> returns 200.</li>
+        <li><code>https://v-axis-api.onrender.com/api/v1/platform/bootstrap</code> returns 200 but reports <code>databaseReady: false</code>.</li>
+        <li><code>https://v-axis-worker.onrender.com/health</code> returns 404, which is expected for a worker with no public HTTP service.</li>
+        <li><code>https://v-axis-web.onrender.com/health</code> and <code>https://v-axis.onrender.com/health</code> return 404.</li>
+      </ul>
+
+      <h2>Render Mismatch Resolution</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Dashboard service ID</th>
+            <th>Dashboard type</th>
+            <th>Likely role</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>srv-d764nucr85hc739cbc90</code></td>
+            <td>worker</td>
+            <td><code>v-axis-worker</code></td>
+            <td>Needs dashboard/API confirmation</td>
+          </tr>
+          <tr>
+            <td><code>srv-d764nucr85hc739cbc8g</code></td>
+            <td>web</td>
+            <td><code>v-axis-api</code></td>
+            <td>Needs dashboard/API confirmation</td>
+          </tr>
+          <tr>
+            <td><code>srv-d763aevpm1nc73covml0</code></td>
+            <td>web</td>
+            <td>Unknown, possibly legacy/manual service</td>
+            <td>Must be reviewed</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Branch And Auto-Deploy Policy</h2>
+      <ul>
+        <li><code>main</code> remains the current production/demo baseline until environment separation is implemented.</li>
+        <li>Do not directly overwrite the demo UI on <code>main</code> without a protected demo route or deployment.</li>
+        <li>Use pull requests for product frontend and backend changes.</li>
+        <li>Run build, tests, and demo clickability checks before merge.</li>
+        <li>Recommended target: <code>main</code> for production, <code>demo-stable</code> for protected demo, and feature branches for active product work.</li>
+      </ul>
+
+      <h2>Environment Variable Policy</h2>
+      <h3>Vercel</h3>
+      <ul>
+        <li>Required: <code>VITE_API_URL</code>.</li>
+        <li>Production value must point to the active Render API base URL.</li>
+        <li>Values are encrypted and must not be copied into documents.</li>
+      </ul>
+      <h3>Render API And Worker</h3>
+      <ul>
+        <li>Required core variables include <code>DATABASE_URL</code>, <code>REDIS_URL</code>, <code>CORS_ORIGIN</code>, <code>COOKIE_SECRET</code>, <code>JWT_SECRET</code>, <code>MFA_ENCRYPTION_SECRET</code>, <code>APP_ENCRYPTION_SECRET</code>, <code>APP_BASE_URL</code>, email variables, vault storage, and worker queue variables.</li>
+        <li>Worker must share database and Redis with the matching API environment.</li>
+        <li>Secrets stay in Render/Vercel secret stores only.</li>
+      </ul>
+
+      <h2>Open Items</h2>
+      <ul>
+        <li>[x] GitHub repository mapped.</li>
+        <li>[x] Vercel project and production deployment mapped.</li>
+        <li>[x] Render API public health confirmed.</li>
+        <li>[x] Render production database initialization issue confirmed.</li>
+        <li>[ ] Render dashboard IDs mapped conclusively to service names.</li>
+        <li>[ ] Third Render web service purpose resolved.</li>
+        <li>[ ] Render worker dashboard/log status confirmed.</li>
+        <li>[ ] Production database migrations applied.</li>
+        <li>[ ] Demo branch or route protection implemented.</li>
+        <li>[ ] UI/UX regression checks added to the repo.</li>
+      </ul>
+
+      <h2>Immediate Next Actions</h2>
+      <ol>
+        <li>Inspect the three Render dashboard service IDs and record service name, repo, branch, build command, start command, and auto-deploy setting.</li>
+        <li>Decide whether the third Render web service is legacy, staging, duplicate, or required.</li>
+        <li>Apply production database migrations for the active API database.</li>
+        <li>Add a protected demo route/deployment before refactoring the real product frontend.</li>
+        <li>Add automated UI/UX checks for the protected demo baseline.</li>
+      </ol>
+    </main>
+  </body>
+</html>

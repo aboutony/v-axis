@@ -79,6 +79,7 @@ export const activityEventTypeEnum = pgEnum(
 export const automationJobKindEnum = pgEnum("automation_job_kind", [
   "DELIVERY",
   "MAINTENANCE",
+  "OCR",
 ]);
 export const automationJobStateEnum = pgEnum("automation_job_state", [
   "QUEUED",
@@ -433,6 +434,70 @@ export const documentVersions = pgTable(
       table.documentId,
       table.versionNumber,
     ),
+  ],
+);
+
+export const ocrExtractions = pgTable(
+  "ocr_extractions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    status: varchar("status", { length: 40 }).notNull().default("QUEUED"),
+    engine: varchar("engine", { length: 120 }),
+    documentKind: varchar("document_kind", { length: 80 }),
+    documentTypeLabel: varchar("document_type_label", { length: 200 }),
+    overallConfidence: numeric("overall_confidence", {
+      precision: 5,
+      scale: 4,
+    }),
+    languageHints: jsonb("language_hints")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    rawText: text("raw_text"),
+    fields: jsonb("fields")
+      .$type<Array<Record<string, unknown>>>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    missingRequiredFields: jsonb("missing_required_fields")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    warnings: jsonb("warnings")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    error: text("error"),
+    queuedBy: uuid("queued_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reviewedBy: uuid("reviewed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    approvedBy: uuid("approved_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("ocr_extractions_tenant_status_idx").on(
+      table.tenantId,
+      table.status,
+      table.createdAt,
+    ),
+    index("ocr_extractions_document_idx").on(table.documentId, table.createdAt),
   ],
 );
 

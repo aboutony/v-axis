@@ -83,6 +83,11 @@ export const authActionPurposes = ["INVITE", "PASSWORD_RESET"] as const;
 
 export const activityEventTypes = [
   "automation.delivery.replayed",
+  "document.ocr.queued",
+  "document.ocr.completed",
+  "document.ocr.failed",
+  "document.ocr.retried",
+  "document.ocr.approved",
   "document.uploaded",
   "document.replaced",
   "document.archived",

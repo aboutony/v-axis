@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>V-AXIS Final Development Roadmap</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #111827;
+        --muted: #4b5563;
+        --line: #d1d5db;
+        --soft: #f3f4f6;
+        --accent: #047857;
+        --warning: #b45309;
+        --danger: #b91c1c;
+      }
+      body {
+        margin: 0;
+        font-family: Arial, Helvetica, sans-serif;
+        color: var(--ink);
+        background: #ffffff;
+        line-height: 1.55;
+      }
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 48px 28px 72px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 34px;
+        line-height: 1.15;
+      }
+      h2 {
+        margin-top: 34px;
+        padding-top: 18px;
+        border-top: 1px solid var(--line);
+        font-size: 22px;
+      }
+      h3 {
+        margin-top: 24px;
+        font-size: 17px;
+      }
+      p {
+        margin: 10px 0;
+      }
+      ul,
+      ol {
+        padding-left: 24px;
+      }
+      li {
+        margin: 5px 0;
+      }
+      code {
+        background: var(--soft);
+        padding: 2px 5px;
+        border-radius: 4px;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 14px;
+        margin-bottom: 28px;
+      }
+      .callout {
+        border-left: 4px solid var(--accent);
+        background: #ecfdf5;
+        padding: 14px 18px;
+        margin: 18px 0;
+      }
+      .warning {
+        border-left-color: var(--warning);
+        background: #fffbeb;
+      }
+      .danger {
+        border-left-color: var(--danger);
+        background: #fef2f2;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0;
+        font-size: 14px;
+      }
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 9px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: var(--soft);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>V-AXIS Final Development Roadmap</h1>
+      <p class="meta">Date: April 28, 2026</p>
+
+      <section class="callout">
+        <p><strong>Executive summary:</strong> V-AXIS currently has a strong backend foundation, a polished demo experience, and a partially developed real product frontend. The roadmap must protect the demo, restore and complete the production product UI, initialize and validate the live backend, and add a production-grade OCR and document intelligence service for PDF, PNG, JPEG, and JPG uploads.</p>
+      </section>
+
+      <h2>Current Verified Baseline</h2>
+      <ul>
+        <li>GitHub local checkout is synced with <code>origin/main</code>.</li>
+        <li>Current commit reviewed: <code>53f8544 Add multi-channel alert center</code>.</li>
+        <li><code>npm run build</code> passes for API and web.</li>
+        <li><code>npm run test</code> passes for API and web.</li>
+        <li>Vercel production deployment is live and serving the current demo-style build.</li>
+        <li>Render API is reachable at <code>https://v-axis-api.onrender.com/health</code>.</li>
+        <li>Render API docs are reachable at <code>https://v-axis-api.onrender.com/docs</code>.</li>
+        <li>Render API reports that the production database schema has not been initialized.</li>
+        <li>The deployed frontend is currently a demo journey, not the real connected product shell.</li>
+        <li>The real product page files exist but are broken or orphaned.</li>
+        <li>Demo UI was verified as clickable on desktop and mobile.</li>
+      </ul>
+
+      <h2>Critical Product Principle</h2>
+      <p>Demo and real product environments must be separated. The demo must remain intact across the entire development journey and must not be overwritten by production work.</p>
+
+      <h2>Environment Strategy</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Environment</th>
+            <th>Purpose</th>
+            <th>Required outcome</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Demo</td>
+            <td>Stable client-facing walkthrough</td>
+            <td>Dedicated route or deployment, deterministic fake data, no production writes, regression-tested clickability.</td>
+          </tr>
+          <tr>
+            <td>Real product</td>
+            <td>Production-ready connected platform</td>
+            <td>Authenticated app connected to API, PostgreSQL, Redis, worker, vault storage, OCR, governance, notifications, and audit logs.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Phase 0 - Stabilize Source Control And Deployment Baseline</h2>
+      <p><strong>Status:</strong> Required immediately.</p>
+      <ul>
+        <li>Confirm GitHub, Vercel, Render API, Render worker, and any third Render service are mapped correctly.</li>
+        <li>Resolve the mismatch between <code>render.yaml</code> and the three Render dashboard links.</li>
+        <li>Document branch, auto-deploy, and environment variable policy.</li>
+      </ul>
+
+      <h2>Phase 1 - Preserve Demo Environment</h2>
+      <p><strong>Status:</strong> Required before major product frontend work.</p>
+      <ul>
+        <li>Create a dedicated <code>/demo</code> route or separate demo deployment.</li>
+        <li>Separate demo entry point from real product entry point.</li>
+        <li>Add desktop and mobile clickability regression checks.</li>
+        <li>Ensure demo opens without database dependency.</li>
+      </ul>
+
+      <h2>Phase 2 - Restore And Complete Real Product Frontend</h2>
+      <p class="warning"><strong>Current issue:</strong> The live frontend mounts a demo journey. Real product pages exist but are not properly mounted; several wrappers lazy-import themselves and one frontend module contains Node file-writing code.</p>
+      <ul>
+        <li>Repair page wrappers and routing.</li>
+        <li>Build real app shell with auth context and protected pages.</li>
+        <li>Connect dashboard, taxonomy, documents, users, governance, notifications, audit, webhooks, connectors, and automation screens to the API.</li>
+        <li>Add clear loading, disabled, success, and error states for all primary actions.</li>
+      </ul>
+
+      <h2>Phase 3 - Initialize And Validate Production Backend</h2>
+      <p class="danger"><strong>Blocking issue:</strong> Render API reports <code>databaseReady: false</code>.</p>
+      <ul>
+        <li>Run production database migrations.</li>
+        <li>Confirm seed data strategy.</li>
+        <li>Verify Redis and worker connectivity.</li>
+        <li>Validate session cookies, CORS, frontend origin settings, and tenant bootstrap.</li>
+      </ul>
+
+      <h2>Phase 4 - OCR And Document Intelligence Service</h2>
+      <p><strong>Status:</strong> Required new roadmap item.</p>
+      <p>The repository includes early OCR-related pieces, including a Tesseract-based extractor service and upload UI accepting <code>.pdf</code>, <code>.jpg</code>, <code>.jpeg</code>, and <code>.png</code>. However, this is not yet a production OCR service connected end-to-end to the real product workflow.</p>
+      <h3>OCR pipeline</h3>
+      <ol>
+        <li>User uploads a document.</li>
+        <li>File is stored in the vault.</li>
+        <li>OCR job is queued.</li>
+        <li>Worker extracts text and layout data.</li>
+        <li>Classifier identifies document type.</li>
+        <li>Extractor reads key fields.</li>
+        <li>Platform calculates confidence scores.</li>
+        <li>User reviews extracted fields.</li>
+        <li>User approves or edits values.</li>
+        <li>Approved metadata updates the document registry.</li>
+        <li>Governance rules recalculate document status and alerts.</li>
+        <li>Audit log records the extraction and approval trail.</li>
+      </ol>
+      <h3>Fields to extract</h3>
+      <ul>
+        <li>Commercial Registration: CR number, entity name, issue date, expiry date, authority, status.</li>
+        <li>ZATCA certificate: certificate number, tax/VAT number, issue date, expiry date, entity name.</li>
+        <li>Baladiyah license: license number, municipality, issue date, expiry date, business activity, location.</li>
+        <li>GOSI record: registration number, entity name, issue date, expiry or validity status.</li>
+        <li>Muqeem/Iqama: employee name, iqama number, nationality, expiry date, sponsor/entity.</li>
+        <li>Labor/work permit: permit number, employee name, issue date, expiry date, occupation, entity.</li>
+        <li>Insurance: policy number, provider, coverage dates, insured entity/person.</li>
+        <li>Generic administrative asset: title, authority, document number, issue date, expiry date.</li>
+      </ul>
+      <h3>Acceptance criteria</h3>
+      <ul>
+        <li>User can upload PDF, PNG, JPEG, and JPG files.</li>
+        <li>OCR processing does not block the UI.</li>
+        <li>Extracted fields appear in a review screen.</li>
+        <li>User can approve or correct extracted values.</li>
+        <li>Approved values create or update document records.</li>
+        <li>Low-confidence fields are clearly marked.</li>
+        <li>Failed OCR jobs are visible and retryable.</li>
+        <li>Upload, OCR, review, and approval actions are present in audit logs.</li>
+      </ul>
+
+      <h2>Phase 5 - Durable Vault Storage</h2>
+      <ul>
+        <li>Move document storage to durable storage or attach persistent disk.</li>
+        <li>Protect files with tenant-aware authorization.</li>
+        <li>Support file versioning, retrieval, backup, and retention.</li>
+      </ul>
+
+      <h2>Phase 6 - Worker, Automation, And Notification Reliability</h2>
+      <ul>
+        <li>Verify Render worker deployment.</li>
+        <li>Confirm Redis queue health.</li>
+        <li>Ensure notifications, governance refresh, escalation, webhook delivery, and OCR jobs run reliably.</li>
+        <li>Add queue monitoring, retry, replay, and admin visibility.</li>
+      </ul>
+
+      <h2>Phase 7 - Security, Compliance, And Multi-Tenant Hardening</h2>
+      <ul>
+        <li>Review permission matrix.</li>
+        <li>Add tenant isolation and file access tests.</li>
+        <li>Confirm secrets, cookies, CORS, audit coverage, and production origin policy.</li>
+      </ul>
+
+      <h2>Phase 8 - End-To-End QA And Release Readiness</h2>
+      <ul>
+        <li>Validate demo walkthrough.</li>
+        <li>Validate tenant bootstrap, login, MFA, invite, and reset.</li>
+        <li>Validate entity setup, document upload, OCR extraction, review, governance recalculation, notifications, audit export, webhooks, and worker replay.</li>
+        <li>Confirm no console errors, no mobile/desktop overflow, and no broken primary buttons.</li>
+      </ul>
+
+      <h2>Progress Tracking Checklist</h2>
+      <ul>
+        <li>[ ] Confirm all GitHub, Vercel, and Render services are mapped.</li>
+        <li>[ ] Initialize production database schema on Render.</li>
+        <li>[ ] Confirm Render worker status.</li>
+        <li>[ ] Separate demo from real product.</li>
+        <li>[ ] Freeze demo and add regression tests.</li>
+        <li>[ ] Repair real product frontend routing.</li>
+        <li>[ ] Connect real frontend to real API.</li>
+        <li>[ ] Build OCR queue and worker pipeline.</li>
+        <li>[ ] Add OCR extraction rules for priority document families.</li>
+        <li>[ ] Add OCR review and approval UI.</li>
+        <li>[ ] Feed approved OCR data into document registry.</li>
+        <li>[ ] Recalculate governance after OCR approval.</li>
+        <li>[ ] Add OCR audit events.</li>
+        <li>[ ] Move vault storage to durable production storage.</li>
+        <li>[ ] Validate tenant isolation and file access.</li>
+        <li>[ ] Run full end-to-end QA.</li>
+      </ul>
+
+      <h2>Final Recommendation</h2>
+      <p>Treat OCR as a core product module, not an add-on. V-AXIS depends on document intelligence: uploaded documents should become structured, governed, auditable records. The demo can continue to show the story, but the production product must now focus on the upload-to-OCR-to-review-to-governance journey.</p>
+    </main>
+  </body>
+</html>

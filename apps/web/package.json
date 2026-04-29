@@ -8,7 +8,8 @@
     "build": "tsc --project tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --project tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "test:demo": "node scripts/check-demo-ui.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.75.5",

@@ -52,7 +52,17 @@ const envSchema = z.object({
     .email()
     .default("no-reply@v-axis.local"),
   EMAIL_FROM_NAME: z.string().default("V-AXIS"),
+  VAULT_STORAGE_DRIVER: z.enum(["LOCAL", "S3"]).default("LOCAL"),
   VAULT_STORAGE_ROOT: z.string().default(".data/vault"),
+  VAULT_S3_BUCKET: z.string().optional(),
+  VAULT_S3_REGION: z.string().default("us-east-1"),
+  VAULT_S3_ENDPOINT: z.string().url().optional(),
+  VAULT_S3_ACCESS_KEY_ID: z.string().optional(),
+  VAULT_S3_SECRET_ACCESS_KEY: z.string().optional(),
+  VAULT_S3_FORCE_PATH_STYLE: z
+    .union([z.boolean(), z.enum(["true", "false"])])
+    .default(false)
+    .transform((value) => value === true || value === "true"),
   JOB_DELIVERY_MODE: z.enum(["INLINE", "QUEUE"]).optional(),
   WORKER_DELIVERY_CONCURRENCY: z.coerce.number().int().positive().default(5),
   WORKER_GOVERNANCE_REFRESH_INTERVAL_MS: z.coerce

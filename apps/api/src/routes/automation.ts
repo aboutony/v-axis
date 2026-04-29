@@ -6,12 +6,18 @@ import { auditLogs } from "@vaxis/db/schema";
 
 import {
   fetchAutomationOverview,
+  loadReplayableOcrJob,
   loadReplayableDeliveryJob,
 } from "../lib/automation";
 import {
   enqueueDeliveryJob,
+  enqueueMaintenanceJob,
+  enqueueOcrJob,
   getDeliveryQueue,
   getMaintenanceQueue,
+  getOcrQueue,
+  getRedisConnection,
+  maintenanceJobNames,
 } from "../lib/jobs";
 import { ensureAuthenticated, ensurePermission } from "../lib/permissions";
 import { apiEnv } from "../config";
@@ -26,7 +32,9 @@ const automationJobParamsSchema = z.object({
 
 async function loadQueueCounts() {
   try {
-    const [deliveryCounts, maintenanceCounts, schedulers] = await Promise.all([
+    const [redisPing, deliveryCounts, maintenanceCounts, ocrCounts, schedulers] =
+      await Promise.all([
+        getRedisConnection().ping(),
       getDeliveryQueue().getJobCounts(
         "wait",
         "active",
@@ -43,11 +51,20 @@ async function loadQueueCounts() {
         "failed",
         "paused",
       ),
+      getOcrQueue().getJobCounts(
+        "wait",
+        "active",
+        "delayed",
+        "completed",
+        "failed",
+        "paused",
+      ),
       getMaintenanceQueue().getJobSchedulers(0, 10, true),
     ]);
 
     return {
       available: true as const,
+      redisPing,
       queues: {
         delivery: {
           waiting: deliveryCounts.wait ?? 0,
@@ -64,6 +81,14 @@ async function loadQueueCounts() {
           completed: maintenanceCounts.completed ?? 0,
           failed: maintenanceCounts.failed ?? 0,
           paused: maintenanceCounts.paused ?? 0,
+        },
+        ocr: {
+          waiting: ocrCounts.wait ?? 0,
+          active: ocrCounts.active ?? 0,
+          delayed: ocrCounts.delayed ?? 0,
+          completed: ocrCounts.completed ?? 0,
+          failed: ocrCounts.failed ?? 0,
+          paused: ocrCounts.paused ?? 0,
         },
       },
       schedulers: schedulers.map((scheduler) => ({
@@ -91,6 +116,14 @@ async function loadQueueCounts() {
           paused: 0,
         },
         maintenance: {
+          waiting: 0,
+          active: 0,
+          delayed: 0,
+          completed: 0,
+          failed: 0,
+          paused: 0,
+        },
+        ocr: {
           waiting: 0,
           active: 0,
           delayed: 0,
@@ -147,6 +180,7 @@ export const automationRoutes: FastifyPluginAsync = async (fastify) => {
         escalationIntervalMs: apiEnv.WORKER_ESCALATION_INTERVAL_MS,
         queueAvailable: queueState.available,
         queueMessage: queueState.available ? null : queueState.message,
+        redisPing: queueState.available ? queueState.redisPing : null,
       },
       queues: queueState.queues,
       schedulers: queueState.schedulers,
@@ -187,8 +221,63 @@ export const automationRoutes: FastifyPluginAsync = async (fastify) => {
         createdAt: job.createdAt,
         updatedAt: job.updatedAt,
       })),
+      recentOcrJobs: overview.recentOcrJobs.map((job) => ({
+        id: job.id,
+        jobName: job.jobName,
+        queueJobId: job.queueJobId,
+        status: job.status,
+        triggeredBy: job.triggeredBy,
+        resourceType: job.resourceType,
+        resourceId: job.resourceId,
+        payloadPreview: job.payloadPreview,
+        resultSummary: job.resultSummary,
+        error: job.error,
+        attemptsMade: job.attemptsMade,
+        maxAttempts: job.maxAttempts,
+        replayOfId: job.replayOfId,
+        availableForReplay: job.status === "FAILED" && Boolean(job.payloadEncrypted),
+        startedAt: job.startedAt,
+        finishedAt: job.finishedAt,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+      })),
     };
   });
+
+  fastify.post(
+    "/api/v1/automation/maintenance/:name/run",
+    async (request, reply) => {
+      if (!(await ensureAuthenticated(request, reply))) {
+        return;
+      }
+
+      if (!ensurePermission(request, reply, "NOTIFICATION_MANAGE")) {
+        return;
+      }
+
+      const params = z
+        .object({
+          name: z.enum([
+            maintenanceJobNames.refreshAllTenants,
+            maintenanceJobNames.escalateAllTenants,
+          ]),
+        })
+        .parse(request.params);
+
+      const job = await enqueueMaintenanceJob(params.name, {
+        triggeredBy: "manual",
+        scheduledFor: new Date().toISOString(),
+      });
+
+      return {
+        message:
+          params.name === maintenanceJobNames.refreshAllTenants
+            ? "Governance refresh queued."
+            : "Notification escalation queued.",
+        jobId: String(job.id),
+      };
+    },
+  );
 
   fastify.post(
     "/api/v1/automation/deliveries/:id/replay",
@@ -247,6 +336,46 @@ export const automationRoutes: FastifyPluginAsync = async (fastify) => {
 
       return {
         message: buildReplayMessage(replayable.job.jobName),
+        replayJobId: String(queuedJob.id),
+      };
+    },
+  );
+
+  fastify.post(
+    "/api/v1/automation/ocr/:id/replay",
+    async (request, reply) => {
+      if (!(await ensureAuthenticated(request, reply))) {
+        return;
+      }
+
+      if (!ensurePermission(request, reply, "NOTIFICATION_MANAGE")) {
+        return;
+      }
+
+      const { id } = automationJobParamsSchema.parse(request.params);
+      const replayable = await loadReplayableOcrJob({
+        id,
+        tenantId: request.user.tenantId,
+      });
+
+      if (!replayable) {
+        return reply.code(404).send({
+          error: "AUTOMATION_JOB_NOT_FOUND",
+          message: "The requested OCR job was not found in this tenant.",
+        });
+      }
+
+      if (replayable.job.status !== "FAILED" || !replayable.payload) {
+        return reply.code(400).send({
+          error: "AUTOMATION_JOB_NOT_REPLAYABLE",
+          message: "Only failed OCR jobs with stored payloads can be replayed.",
+        });
+      }
+
+      const queuedJob = await enqueueOcrJob(replayable.payload as never);
+
+      return {
+        message: "OCR job requeued.",
         replayJobId: String(queuedJob.id),
       };
     },

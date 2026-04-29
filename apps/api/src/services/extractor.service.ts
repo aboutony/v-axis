@@ -1,66 +1,92 @@
-// apps/api/src/services/extractor.service.ts
+import { createWorker } from "tesseract.js";
 
-import { createWorker } from 'tesseract.js'; // Standard 2026 High-Fidelity OCR
+import {
+  analyzeOcrText,
+  type OcrExtractionResult,
+} from "../lib/ocr-intelligence";
 
 interface ExtractedMetadata {
   detectedType: string;
-  expiryDate: string;
+  expiryDate: string | null;
   confidence: number;
 }
 
-export const processDocumentMetadata = async (fileBuffer: Buffer): Promise<ExtractedMetadata> => {
-  // 1. Initialize the Sovereign OCR Worker (Dual-Language: Arabic/English)
-  const worker = await createWorker(['eng', 'ara']);
-  
-  // 2. Perform the High-Fidelity Scan
-  const { data: { text, confidence } } = await worker.recognize(fileBuffer);
-  await worker.terminate();
+export async function extractDocumentIntelligence(input: {
+  fileBuffer: Buffer;
+  filename?: string;
+  mimeType?: string;
+}): Promise<OcrExtractionResult> {
+  const context = input.filename ? { filename: input.filename } : {};
 
-  // 3. The "Anchor Key" Logic: Finding Expiry Dates
-  // We look for patterns common in Saudi Administrative Documents
-  const expiryRegex = /(Expiry Date|Valid Until|تاريخ الانتهاء|Expiry)\s*[:\-]?\s*(\d{4}[-/]\d{2}[-/]\d{2}|\d{2}[-/]\d{2}[-/]\d{4})/gi;
-  const match = expiryRegex.exec(text);
+  if (isPdf(input.filename, input.mimeType)) {
+    const pdfText = await extractPdfText(input.fileBuffer);
 
-  let detectedDate = '2026-12-31'; // Default Fallback
-  if (match && match[2]) {
-    const rawDate = match[2].replace(/\//g, '-');
-    // Normalize to ISO (YYYY-MM-DD)
-    detectedDate = normalizeDate(rawDate);
+    if (pdfText.trim()) {
+      return analyzeOcrText({
+        rawText: pdfText,
+        ...context,
+        engine: "pdf-parse",
+        engineConfidence: 0.86,
+        warnings: [
+          "Text was extracted from the PDF text layer. Scanned PDF page rasterization is still required for image-only PDFs.",
+        ],
+      });
+    }
+
+    return analyzeOcrText({
+      rawText: "",
+      ...context,
+      engine: "tesseract.js-pending-pdf-rasterization",
+      engineConfidence: 0,
+      warnings: [
+        "PDF upload is accepted, but server-side page rasterization is the next OCR slice before text can be extracted from PDF files.",
+      ],
+    });
   }
 
-  // 4. Document Type Classification
-  const detectedType = classifyDocument(text);
+  const worker = await createWorker(["eng", "ara"]);
 
-  return {
-    detectedType,
-    expiryDate: detectedDate,
-    confidence: confidence / 100
-  };
-};
+  try {
+    const {
+      data: { text, confidence },
+    } = await worker.recognize(input.fileBuffer);
 
-/**
- * Normalizes various date formats found in Saudi docs to ISO YYYY-MM-DD
- */
-function normalizeDate(dateStr: string): string {
-  // Logic to handle DD-MM-YYYY vs YYYY-MM-DD
-  const parts = dateStr.split('-');
-  const first = parts[0];
-  const second = parts[1];
-  const third = parts[2];
-
-  if (first && second && third && first.length === 2) {
-    return `${third}-${second}-${first}`; // Convert to ISO
+    return analyzeOcrText({
+      rawText: text,
+      ...context,
+      engine: "tesseract.js",
+      engineConfidence: confidence / 100,
+    });
+  } finally {
+    await worker.terminate();
   }
-  return dateStr;
 }
 
-/**
- * Analyzes text density to identify the Document Type
- */
-function classifyDocument(text: string): string {
-  const content = text.toLowerCase();
-  if (content.includes('muqeem') || content.includes('iqama')) return 'Muqeem';
-  if (content.includes('commercial registration') || content.includes('سجل تجاري')) return 'Trade License';
-  if (content.includes('gosi') || content.includes('social insurance')) return 'GOSI';
-  return 'Administrative Asset';
+export async function processDocumentMetadata(
+  fileBuffer: Buffer,
+): Promise<ExtractedMetadata> {
+  const extraction = await extractDocumentIntelligence({ fileBuffer });
+  const expiryDate =
+    extraction.fields.find((field) => field.key.toLowerCase().includes("expiry"))
+      ?.value ?? null;
+
+  return {
+    detectedType: extraction.documentTypeLabel,
+    expiryDate,
+    confidence: extraction.overallConfidence,
+  };
+}
+
+function isPdf(filename?: string, mimeType?: string) {
+  return (
+    mimeType?.toLowerCase() === "application/pdf" ||
+    filename?.toLowerCase().endsWith(".pdf")
+  );
+}
+
+async function extractPdfText(fileBuffer: Buffer) {
+  const pdfParse = (await import("pdf-parse")).default;
+  const result = await pdfParse(fileBuffer);
+
+  return result.text ?? "";
 }

@@ -251,6 +251,53 @@ export type DocumentVersionsResponse = {
   }>;
 };
 
+export type OcrExtractionResponse = {
+  message: string;
+  ocr: {
+    engine: string;
+    languageHints: string[];
+    rawText: string;
+    documentKind: string;
+    documentTypeLabel: string;
+    overallConfidence: number;
+    fields: Array<{
+      key: string;
+      label: string;
+      value: string;
+      confidence: number;
+      status: "READY" | "LOW_CONFIDENCE";
+      source: "label" | "pattern" | "generic" | "user";
+    }>;
+    missingRequiredFields: string[];
+    requiresReview: boolean;
+    warnings: string[];
+    templateHints: string[];
+  };
+};
+
+export type OcrExtractionRecord = {
+  id: string;
+  tenantId: string;
+  documentId: string;
+  status: string;
+  engine: string | null;
+  documentKind: string | null;
+  documentTypeLabel: string | null;
+  overallConfidence: string | null;
+  languageHints: string[];
+  rawText: string | null;
+  fields: OcrExtractionResponse["ocr"]["fields"];
+  missingRequiredFields: string[];
+  warnings: string[];
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OcrExtractionsResponse = {
+  ocrExtractions: OcrExtractionRecord[];
+};
+
 export type DashboardSummaryResponse = {
   portfolioHealthScore: number;
   categoryHealthCards: Array<{
@@ -487,24 +534,12 @@ export type AutomationOverviewResponse = {
     escalationIntervalMs: number;
     queueAvailable: boolean;
     queueMessage: string | null;
+    redisPing: string | null;
   };
   queues: {
-    delivery: {
-      waiting: number;
-      active: number;
-      delayed: number;
-      completed: number;
-      failed: number;
-      paused: number;
-    };
-    maintenance: {
-      waiting: number;
-      active: number;
-      delayed: number;
-      completed: number;
-      failed: number;
-      paused: number;
-    };
+    delivery: QueueCounts;
+    maintenance: QueueCounts;
+    ocr: QueueCounts;
   };
   schedulers: Array<{
     key: string;
@@ -516,13 +551,28 @@ export type AutomationOverviewResponse = {
   failureSummary: {
     deliveryFailed: number;
     maintenanceFailed: number;
+    ocrFailed: number;
   };
-  recentDeliveries: Array<{
-    id: string;
-    jobName: string;
-    queueJobId: string;
-    status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
-    triggeredBy: string;
+  recentDeliveries: AutomationJobRecord[];
+  recentMaintenanceRuns: AutomationJobRecord[];
+  recentOcrJobs: AutomationJobRecord[];
+};
+
+type QueueCounts = {
+      waiting: number;
+      active: number;
+      delayed: number;
+      completed: number;
+      failed: number;
+      paused: number;
+};
+
+type AutomationJobRecord = {
+      id: string;
+      jobName: string;
+      queueJobId: string;
+      status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+      triggeredBy: string;
     resourceType: string | null;
     resourceId: string | null;
     payloadPreview: Record<string, unknown>;
@@ -532,27 +582,10 @@ export type AutomationOverviewResponse = {
     maxAttempts: number;
     replayOfId: string | null;
     availableForReplay: boolean;
-    startedAt: string | null;
-    finishedAt: string | null;
-    createdAt: string;
-    updatedAt: string;
-  }>;
-  recentMaintenanceRuns: Array<{
-    id: string;
-    jobName: string;
-    queueJobId: string;
-    status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
-    triggeredBy: string;
-    payloadPreview: Record<string, unknown>;
-    resultSummary: Record<string, unknown>;
-    error: string | null;
-    attemptsMade: number;
-    maxAttempts: number;
-    startedAt: string | null;
-    finishedAt: string | null;
-    createdAt: string;
-    updatedAt: string;
-  }>;
+      startedAt: string | null;
+      finishedAt: string | null;
+      createdAt: string;
+      updatedAt: string;
 };
 
 export type WebhooksResponse = {
@@ -638,6 +671,7 @@ export type UpdateConnectorInput = {
 type DocumentMutationResponse = {
   message: string;
   document: DocumentsResponse["documents"][number];
+  ocr?: OcrExtractionRecord;
   riskSnapshot: {
     score: number;
     gapCount: number;
@@ -670,6 +704,27 @@ async function parseJson<T>(response: Response): Promise<T> {
   }
 
   return payload as T;
+}
+
+async function parseBlobDownload(response: Response, fallbackFilename: string) {
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as ApiPayload;
+    throw new ApiError(
+      typeof payload.message === "string"
+        ? payload.message
+        : "The file could not be downloaded.",
+      typeof payload.error === "string" ? payload.error : undefined,
+      payload,
+    );
+  }
+
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename=\"([^\"]+)\"/i);
+
+  return {
+    blob: await response.blob(),
+    filename: match?.[1] ?? fallbackFilename,
+  };
 }
 
 function buildHeaders(accessToken?: string, includeJson = false) {
@@ -903,6 +958,37 @@ export async function fetchDocumentVersions(
   return parseJson<DocumentVersionsResponse>(response);
 }
 
+export async function downloadDocumentFile(
+  accessToken: string,
+  documentId: string,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/documents/${documentId}/file`,
+    {
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseBlobDownload(response, "vaxis-document");
+}
+
+export async function downloadDocumentVersionFile(
+  accessToken: string,
+  documentId: string,
+  versionNumber: number,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/documents/${documentId}/versions/${versionNumber}/file`,
+    {
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseBlobDownload(response, `vaxis-document-v${versionNumber}`);
+}
+
 export async function registerDocument(
   accessToken: string,
   input: RegisterDocumentInput,
@@ -934,6 +1020,73 @@ export async function uploadDocument(
   });
 
   return parseJson<DocumentMutationResponse>(response);
+}
+
+export async function previewDocumentOcr(accessToken: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/documents/ocr-preview`, {
+    method: "POST",
+    headers: buildHeaders(accessToken),
+    credentials: "include",
+    body: formData,
+  });
+
+  return parseJson<OcrExtractionResponse>(response);
+}
+
+export async function fetchDocumentOcr(
+  accessToken: string,
+  documentId: string,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/documents/${documentId}/ocr`,
+    {
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<OcrExtractionsResponse>(response);
+}
+
+export async function retryOcrExtraction(
+  accessToken: string,
+  ocrExtractionId: string,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/ocr-extractions/${ocrExtractionId}/retry`,
+    {
+      method: "POST",
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<{ message: string; ocr: OcrExtractionRecord }>(response);
+}
+
+export async function approveOcrExtraction(
+  accessToken: string,
+  ocrExtractionId: string,
+  fields: OcrExtractionResponse["ocr"]["fields"],
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/ocr-extractions/${ocrExtractionId}/approve`,
+    {
+      method: "POST",
+      headers: buildHeaders(accessToken, true),
+      credentials: "include",
+      body: JSON.stringify({ fields }),
+    },
+  );
+
+  return parseJson<
+    DocumentMutationResponse & {
+      message: string;
+    }
+  >(response);
 }
 
 export async function replaceDocumentFile(
@@ -1295,6 +1448,46 @@ export async function replayAutomationDelivery(
   return parseJson<{
     message: string;
     replayJobId: string;
+  }>(response);
+}
+
+export async function replayAutomationOcr(
+  accessToken: string,
+  automationJobId: string,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/automation/ocr/${automationJobId}/replay`,
+    {
+      method: "POST",
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<{
+    message: string;
+    replayJobId: string;
+  }>(response);
+}
+
+export async function runAutomationMaintenance(
+  accessToken: string,
+  name:
+    | "maintenance.governance.refresh-all-tenants"
+    | "maintenance.notifications.escalate-all-tenants",
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/automation/maintenance/${encodeURIComponent(name)}/run`,
+    {
+      method: "POST",
+      headers: buildHeaders(accessToken),
+      credentials: "include",
+    },
+  );
+
+  return parseJson<{
+    message: string;
+    jobId: string;
   }>(response);
 }
 

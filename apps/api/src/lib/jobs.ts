@@ -12,6 +12,7 @@ import {
 export const queueNames = {
   delivery: "vaxis-delivery",
   maintenance: "vaxis-maintenance",
+  ocr: "vaxis-ocr",
 } as const;
 
 export const deliveryJobNames = {
@@ -24,6 +25,10 @@ export const deliveryJobNames = {
 export const maintenanceJobNames = {
   refreshAllTenants: "maintenance.governance.refresh-all-tenants",
   escalateAllTenants: "maintenance.notifications.escalate-all-tenants",
+} as const;
+
+export const ocrJobNames = {
+  extractDocument: "ocr.document.extract",
 } as const;
 
 export type InviteEmailJobData = {
@@ -77,6 +82,18 @@ export type DeliveryQueueJobData = {
   payload: Record<string, unknown>;
 };
 
+export type OcrJobData = {
+  tenantId: string;
+  documentId: string;
+  ocrExtractionId: string;
+  requestedBy?: string | null;
+};
+
+export type OcrQueueJobData = {
+  automationJobId: string;
+  payload: OcrJobData;
+};
+
 let redisConnection: IORedis | null = null;
 let deliveryQueue:
   | Queue<Record<string, unknown>, unknown, string>
@@ -84,6 +101,7 @@ let deliveryQueue:
 let maintenanceQueue:
   | Queue<Record<string, unknown>, unknown, string>
   | null = null;
+let ocrQueue: Queue<Record<string, unknown>, unknown, string> | null = null;
 
 export function createRedisConnection() {
   return new IORedis(apiEnv.REDIS_URL, {
@@ -136,6 +154,25 @@ export function getMaintenanceQueue() {
   }
 
   return maintenanceQueue;
+}
+
+export function getOcrQueue() {
+  if (!ocrQueue) {
+    ocrQueue = new Queue(queueNames.ocr, {
+      connection: getRedisConnection(),
+      defaultJobOptions: {
+        removeOnComplete: 100,
+        removeOnFail: 200,
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 2_000,
+        },
+      },
+    });
+  }
+
+  return ocrQueue;
 }
 
 export async function enqueueDeliveryJob(
@@ -192,6 +229,36 @@ export async function enqueueMaintenanceJob(
   return getMaintenanceQueue().add(name, data as Record<string, unknown>);
 }
 
+export async function enqueueOcrJob(data: OcrJobData) {
+  const automationJobId = await createQueuedDeliveryJobRecord({
+    jobName: ocrJobNames.extractDocument,
+    queueName: queueNames.ocr,
+    payload: data as unknown as Record<string, unknown>,
+    triggeredBy: "OCR",
+    maxAttempts: 3,
+  });
+
+  try {
+    return await getOcrQueue().add(
+      ocrJobNames.extractDocument,
+      {
+        automationJobId,
+        payload: data,
+      } satisfies OcrQueueJobData,
+      {
+        jobId: automationJobId,
+      },
+    );
+  } catch (error) {
+    await markAutomationJobFailed({
+      queueJobId: automationJobId,
+      attemptsMade: 0,
+      error,
+    });
+    throw error;
+  }
+}
+
 export async function upsertMaintenanceScheduler(input: {
   schedulerId: string;
   jobName: (typeof maintenanceJobNames)[keyof typeof maintenanceJobNames];
@@ -221,10 +288,12 @@ export async function closeJobClients() {
   await Promise.allSettled([
     deliveryQueue?.close(),
     maintenanceQueue?.close(),
+    ocrQueue?.close(),
   ]);
 
   deliveryQueue = null;
   maintenanceQueue = null;
+  ocrQueue = null;
 
   if (redisConnection) {
     await redisConnection.quit().catch(() => redisConnection?.disconnect());

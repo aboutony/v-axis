@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>V-AXIS Delivery Team Required Skills</title>
+  <style>
+    body { margin: 0; background: #f6f4ef; color: #172033; font-family: Arial, Helvetica, sans-serif; line-height: 1.55; }
+    main { max-width: 1040px; margin: 0 auto; padding: 48px 28px 72px; background: #ffffff; }
+    h1 { margin: 0 0 12px; font-size: 34px; color: #34451d; border-bottom: 4px solid #6b7f3f; padding-bottom: 16px; }
+    h2 { margin-top: 34px; color: #34451d; border-bottom: 1px solid #d8e2ea; padding-bottom: 7px; }
+    h3 { margin-top: 24px; color: #6b7f3f; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0 24px; font-size: 14px; }
+    th, td { border: 1px solid #d8e2ea; padding: 9px 10px; vertical-align: top; }
+    th { background: #34451d; color: #ffffff; text-align: left; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    code { background: #eef3f7; padding: 2px 5px; border-radius: 4px; }
+    pre { background: #101923; color: #f5f7fb; padding: 16px; overflow: auto; border-radius: 8px; }
+    pre code { background: transparent; color: inherit; padding: 0; }
+    ul, ol { padding-left: 24px; }
+    a { color: #6b7f3f; }
+    p:first-of-type { color: #506173; }
+  </style>
+</head>
+<body><main><h1>V-AXIS Delivery Team Required Skills</h1>
+<p>Prepared for: Delivery and implementation staffing<br>
+Project: V-AXIS multi-tenant document governance platform<br>
+Date: 2026-04-29</p>
+<h2>1. Purpose</h2>
+<p>This document defines the skills, roles, and practical responsibilities required to implement V-AXIS at a customer site. The delivery team should be able to configure the platform, validate production infrastructure, onboard customer administrators, run pilot document workflows, troubleshoot deployment issues, and transition the customer into support.</p>
+<h2>2. Recommended Delivery Team Structure</h2>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Required Level</th>
+<th>Primary Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Delivery Lead</td>
+<td>Senior</td>
+<td>Own customer implementation plan, sign-off, risks, and stakeholder communication.</td>
+</tr>
+<tr>
+<td>Solution Architect</td>
+<td>Senior</td>
+<td>Map customer governance needs to V-AXIS tenants, entities, taxonomy, storage, and integration model.</td>
+</tr>
+<tr>
+<td>DevOps / Cloud Engineer</td>
+<td>Senior</td>
+<td>Own Vercel, Render, PostgreSQL, Redis, secrets, DNS, deployment, monitoring, and backup readiness.</td>
+</tr>
+<tr>
+<td>Backend Engineer</td>
+<td>Mid to Senior</td>
+<td>Validate API behavior, migrations, auth, worker automation, webhooks, and environment configuration.</td>
+</tr>
+<tr>
+<td>Frontend Engineer</td>
+<td>Mid</td>
+<td>Validate customer-facing workflows, browser compatibility, and frontend environment configuration.</td>
+</tr>
+<tr>
+<td>Database Engineer</td>
+<td>Mid to Senior</td>
+<td>Own PostgreSQL migrations, backup/restore verification, data checks, and performance review.</td>
+</tr>
+<tr>
+<td>Security / Compliance Specialist</td>
+<td>Senior</td>
+<td>Review tenant boundaries, MFA, secrets, audit logs, retention, data residency, and customer controls.</td>
+</tr>
+<tr>
+<td>Document Governance Specialist</td>
+<td>Senior domain role</td>
+<td>Configure customer taxonomy, document rules, governance metrics, and operating model.</td>
+</tr>
+<tr>
+<td>QA / UAT Analyst</td>
+<td>Mid</td>
+<td>Execute automated QA, manual journey checklist, defect triage, and customer UAT evidence.</td>
+</tr>
+<tr>
+<td>Customer Training Specialist</td>
+<td>Mid</td>
+<td>Train administrators and end users, prepare adoption materials, and support go-live readiness.</td>
+</tr>
+<tr>
+<td>Support Engineer</td>
+<td>Mid</td>
+<td>Own post-go-live monitoring, incident triage, and handover to steady-state support.</td>
+</tr>
+</tbody>
+</table>
+<h2>3. Role Details</h2>
+<h3>Delivery Lead</h3>
+<p>Required skills:</p>
+<ul>
+<li>Customer implementation planning.</li>
+<li>Scope, risk, dependency, and decision tracking.</li>
+<li>Executive and working-team communication.</li>
+<li>Cutover planning and go-live governance.</li>
+<li>Sign-off facilitation.</li>
+</ul>
+<p>Responsibilities:</p>
+<ul>
+<li>Maintain the implementation plan and go-live checklist.</li>
+<li>Confirm customer stakeholders and approval path.</li>
+<li>Coordinate environment readiness, UAT, training, and production launch.</li>
+<li>Own issue escalation and final delivery acceptance.</li>
+</ul>
+<p>Acceptance indicators:</p>
+<ul>
+<li>Customer has approved scope and deployment plan.</li>
+<li>Manual production journey checklist is scheduled and assigned.</li>
+<li>Go-live decision is documented.</li>
+</ul>
+<h3>Solution Architect</h3>
+<p>Required skills:</p>
+<ul>
+<li>Multi-tenant SaaS architecture.</li>
+<li>Document governance operating models.</li>
+<li>Data residency and integration planning.</li>
+<li>Security-by-design and customer control mapping.</li>
+<li>Practical knowledge of V-AXIS workflows.</li>
+</ul>
+<p>Responsibilities:</p>
+<ul>
+<li>Translate customer organization structure into tenants, entities, categories, and rules.</li>
+<li>Confirm integration boundaries for email, webhooks, storage, and identity.</li>
+<li>Define pilot scope and production rollout sequence.</li>
+<li>Validate that the customer implementation model fits the platform capabilities.</li>
+</ul>
+<p>Acceptance indicators:</p>
+<ul>
+<li>Customer taxonomy and entity model are approved.</li>
+<li>Integration architecture is documented.</li>
+<li>Production readiness risks are identified before go-live.</li>
+</ul>
+<h3>DevOps / Cloud Engineer</h3>
+<p>Required skills:</p>
+<ul>
+<li>Vercel project deployment and environment management.</li>
+<li>Render web service and worker service configuration.</li>
+<li>PostgreSQL and Redis managed service operations.</li>
+<li>Secret management and rotation.</li>
+<li>Deployment logs, health checks, and rollback procedures.</li>
+<li>DNS/TLS basics where custom domains are used.</li>
+</ul>
+<p>Responsibilities:</p>
+<ul>
+<li>Configure Vercel <code>VITE_API_URL</code>.</li>
+<li>Configure Render API and worker environment variables.</li>
+<li>Run or coordinate database migrations.</li>
+<li>Verify <code>/health</code>, <code>/docs</code>, CORS, worker startup, and queue connectivity.</li>
+<li>Document rollback and incident response steps.</li>
+</ul>
+<p>Acceptance indicators:</p>
+<ul>
+<li>Frontend, API, and worker are deployed and healthy.</li>
+<li>Production environment variables are complete and secret-safe.</li>
+<li>Render and Vercel logs show no startup failures.</li>
+</ul>
+<h3>Backend Engineer</h3>
+<p>Required skills:</p>
+<ul>
+<li>Node.js and TypeScript.</li>
+<li>Fastify API development and troubleshooting.</li>
+<li>Zod validation and API contract checks.</li>
+<li>JWT sessions, cookies, MFA, and role-based access controls.</li>
+<li>BullMQ/Redis job processing.</li>
+<li>Webhook signing and replay patterns.</li>
+</ul>
+<p>Responsibilities:</p>
+<ul>
+<li>Validate auth, tenant bootstrap, user administration, documents, audit, automation, and webhook routes.</li>
+<li>Triage API errors during implementation.</li>
+<li>Confirm worker replay and scheduled automation behavior.</li>
+<li>Support customer-specific backend configuration questions.</li>
+</ul>
+<p>Acceptance indicators:</p>
+<ul>
+<li>API smoke checks pass against production.</li>
+<li>Protected endpoints reject unauthenticated access.</li>
+<li>Worker automation can process and replay jobs.</li>
+</ul>
+<h3>Frontend Engineer</h3>
+<p>Required skills:</p>
+<ul>
+<li>React, Vite, TypeScript, React Query, React Router.</li>
+<li>Environment-driven API configuration.</li>
+<li>Browser dev tools and production UI troubleshooting.</li>
+<li>Responsive UI validation.</li>
+<li>UAT support for business workflows.</li>
+</ul>
+<p>Responsibilities:</p>
+<ul>
+<li>Verify Vercel deployment and frontend API connectivity.</li>
+<li>Execute UI checks on desktop and mobile.</li>
+<li>Support customer UAT for tenant admin, taxonomy, document registry, audit, automation, and access flows.</li>
+<li>Triage UI defects and coordinate fixes.</li>
+</ul>
+<p>Acceptance indicators:</p>
+<ul>
+<li>Demo and <code>/app</code> routes render correctly.</li>
+<li>Customer workflows are usable in supported browsers.</li>
+<li>No blocking frontend console errors remain.</li>
+</ul>
+<h3>Database Engineer</h3>
+<p>Required skills:</p>
+<ul>
+<li>PostgreSQL operations.</li>
+<li>Drizzle migrations.</li>
+<li>Backup and restore validation.</li>
+<li>Query and index review.</li>
+<li>Production data handling and change control.</li>
+</ul>
+<p>Responsibilities:</p>
+<ul>
+<li>Confirm production database connection and migration status.</li>
+<li>Run migrations through an approved process.</li>
+<li>Validate backup/restore readiness before go-live.</li>
+<li>Support data checks for tenant bootstrap and document workflows.</li>
+</ul>
+<p>Acceptance indicators:</p>
+<ul>
+<li>Migration history is current.</li>
+<li>Backup/restore process is tested or formally accepted.</li>
+<li>Database readiness reports healthy through the API bootstrap endpoint.</li>
+</ul>
+<h3>Security / Compliance Specialist</h3>
+<p>Required skills:</p>
+<ul>
+<li>SaaS security review.</li>
+<li>MFA, session, cookie, CORS, and secret management controls.</li>
+<li>Audit logging and evidence review.</li>
+<li>Data classification, retention, and data residency.</li>
+<li>Customer compliance documentation.</li>
+</ul>
+<p>Responsibilities:</p>
+<ul>
+<li>Verify production secrets are strong and not committed to source control.</li>
+<li>Confirm CORS and cookie settings match the customer deployment model.</li>
+<li>Review audit export behavior and customer evidence requirements.</li>
+<li>Review vault storage permissions and encryption posture.</li>
+<li>Confirm go-live risk acceptance for any deferred control.</li>
+</ul>
+<p>Acceptance indicators:</p>
+<ul>
+<li>Security checklist is signed off.</li>
+<li>Secrets and storage controls are production-appropriate.</li>
+<li>Audit and retention expectations are documented.</li>
+</ul>
+<h3>Document Governance Specialist</h3>
+<p>Required skills:</p>
+<ul>
+<li>Document control, records management, and governance policy design.</li>
+<li>Entity and category modeling.</li>
+<li>Review and approval workflows.</li>
+<li>Risk scoring and compliance reporting concepts.</li>
+<li>Customer workshop facilitation.</li>
+</ul>
+<p>Responsibilities:</p>
+<ul>
+<li>Define customer document categories, entities, required document rules, and review policies.</li>
+<li>Guide pilot document selection.</li>
+<li>Validate OCR/review workflow fit with customer operations.</li>
+<li>Train customer owners on governance dashboards and audit outputs.</li>
+</ul>
+<p>Acceptance indicators:</p>
+<ul>
+<li>Customer taxonomy is configured and validated.</li>
+<li>Pilot documents produce expected governance outcomes.</li>
+<li>Customer owners understand operating procedures.</li>
+</ul>
+<h3>QA / UAT Analyst</h3>
+<p>Required skills:</p>
+<ul>
+<li>Test planning and evidence capture.</li>
+<li>Browser and API smoke testing.</li>
+<li>Regression testing.</li>
+<li>Customer UAT facilitation.</li>
+<li>Defect triage and severity classification.</li>
+</ul>
+<p>Responsibilities:</p>
+<ul>
+<li>Run automated checks: <code>typecheck</code>, <code>test</code>, <code>build</code>, <code>test:demo</code>, and <code>phase8:qa</code>.</li>
+<li>Execute the manual production journey checklist.</li>
+<li>Record evidence for customer sign-off.</li>
+<li>Coordinate retesting after fixes.</li>
+</ul>
+<p>Acceptance indicators:</p>
+<ul>
+<li>Automated QA evidence is captured.</li>
+<li>Manual journeys are passed or exceptions are approved.</li>
+<li>UAT defects are triaged and resolved or accepted.</li>
+</ul>
+<h3>Customer Training Specialist</h3>
+<p>Required skills:</p>
+<ul>
+<li>Administrator and end-user training.</li>
+<li>Process documentation.</li>
+<li>Change adoption and floor-walking support.</li>
+<li>Clear explanation of governance workflows.</li>
+</ul>
+<p>Responsibilities:</p>
+<ul>
+<li>Prepare training sessions for admins, reviewers, document owners, and support users.</li>
+<li>Explain tenant bootstrap, MFA, invites, taxonomy, documents, OCR review, audit, and automation panels.</li>
+<li>Capture common support questions and feed them into the knowledge base.</li>
+</ul>
+<p>Acceptance indicators:</p>
+<ul>
+<li>Customer administrators can operate the platform without delivery-team intervention.</li>
+<li>Training attendance and materials are recorded.</li>
+<li>Post-training questions are tracked.</li>
+</ul>
+<h3>Support Engineer</h3>
+<p>Required skills:</p>
+<ul>
+<li>Production incident triage.</li>
+<li>Log review across Vercel and Render.</li>
+<li>API, frontend, worker, database, Redis, and storage troubleshooting.</li>
+<li>Customer communication during incidents.</li>
+</ul>
+<p>Responsibilities:</p>
+<ul>
+<li>Monitor the first production use window.</li>
+<li>Triage login, upload, OCR, notification, webhook, and worker issues.</li>
+<li>Escalate defects to engineering with logs and reproduction steps.</li>
+<li>Own transition into steady-state support.</li>
+</ul>
+<p>Acceptance indicators:</p>
+<ul>
+<li>Support runbook is ready.</li>
+<li>First-use monitoring is assigned.</li>
+<li>Escalation path and severity model are understood.</li>
+</ul>
+<h2>4. Platform Knowledge Areas</h2>
+<p>The delivery team must collectively understand:</p>
+<ul>
+<li>Tenant bootstrap and tenant isolation.</li>
+<li>JWT session behavior and MFA enrollment.</li>
+<li>Invite and password reset workflows.</li>
+<li>Entity, taxonomy, and document rule configuration.</li>
+<li>Document upload, versioning, OCR extraction, and review.</li>
+<li>Governance recalculation and dashboard interpretation.</li>
+<li>Notification creation, acknowledgement, escalation, and resolution.</li>
+<li>Webhook configuration, signed delivery, and replay.</li>
+<li>Audit exploration and export.</li>
+<li>Worker queues, scheduled jobs, and replay operations.</li>
+<li>Vercel and Render deployment workflows.</li>
+<li>PostgreSQL migrations and production data handling.</li>
+<li>Redis queue availability and failure modes.</li>
+<li>Vault storage configuration and recovery expectations.</li>
+</ul>
+<h2>5. Minimum Go-Live Staffing</h2>
+<p>For a controlled customer pilot, the minimum recommended staffing is:</p>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Allocation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Delivery Lead</td>
+<td>Part-time through full implementation; full-time during go-live window.</td>
+</tr>
+<tr>
+<td>Solution Architect</td>
+<td>Part-time during discovery and configuration; on call during UAT.</td>
+</tr>
+<tr>
+<td>DevOps / Cloud Engineer</td>
+<td>Full-time during deployment; on call during go-live.</td>
+</tr>
+<tr>
+<td>Backend Engineer</td>
+<td>On call during deployment, UAT, and first production use.</td>
+</tr>
+<tr>
+<td>Frontend Engineer</td>
+<td>On call during UAT and first production use.</td>
+</tr>
+<tr>
+<td>QA / UAT Analyst</td>
+<td>Full-time during UAT execution.</td>
+</tr>
+<tr>
+<td>Document Governance Specialist</td>
+<td>Full-time during customer configuration workshops; part-time during UAT.</td>
+</tr>
+<tr>
+<td>Customer Training Specialist</td>
+<td>Part-time before go-live; available during first-use support.</td>
+</tr>
+<tr>
+<td>Support Engineer</td>
+<td>Assigned before go-live and active during hypercare.</td>
+</tr>
+</tbody>
+</table>
+<h2>6. Readiness Checklist</h2>
+<table>
+<thead>
+<tr>
+<th>Checklist Item</th>
+<th>Owner</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Customer deployment topology approved</td>
+<td>Delivery Lead / Solution Architect</td>
+</tr>
+<tr>
+<td>Production secrets generated and stored correctly</td>
+<td>DevOps / Security</td>
+</tr>
+<tr>
+<td>Vercel environment configured</td>
+<td>DevOps</td>
+</tr>
+<tr>
+<td>Render API and worker environments configured</td>
+<td>DevOps</td>
+</tr>
+<tr>
+<td>Production migrations completed</td>
+<td>Database Engineer</td>
+</tr>
+<tr>
+<td>Automated QA passed</td>
+<td>QA Analyst</td>
+</tr>
+<tr>
+<td>Manual production journeys passed</td>
+<td>QA Analyst / Customer</td>
+</tr>
+<tr>
+<td>Customer taxonomy approved</td>
+<td>Governance Specialist</td>
+</tr>
+<tr>
+<td>SMTP and webhook integrations tested</td>
+<td>Backend Engineer / DevOps</td>
+</tr>
+<tr>
+<td>Audit export verified</td>
+<td>QA Analyst / Compliance</td>
+</tr>
+<tr>
+<td>Customer admin training completed</td>
+<td>Training Specialist</td>
+</tr>
+<tr>
+<td>Hypercare ownership assigned</td>
+<td>Support Engineer</td>
+</tr>
+</tbody>
+</table>
+<h2>7. Recommended Certifications Or Experience</h2>
+<p>Certifications are not mandatory, but the following experience profiles are useful:</p>
+<ul>
+<li>Cloud deployment experience with Vercel, Render, Railway, Heroku, AWS, Azure, or GCP.</li>
+<li>PostgreSQL production operations experience.</li>
+<li>Redis/BullMQ or similar queue-processing experience.</li>
+<li>Security experience with SaaS auth, MFA, CORS, cookies, and secret management.</li>
+<li>Records management, document control, ISO, audit, or compliance workflow experience.</li>
+<li>Practical TypeScript/React/Node.js production support experience.</li>
+</ul>
+<h2>8. Final Staffing Guidance</h2>
+<p>The most important delivery-team capability is not a single technology skill. It is the ability to combine customer governance knowledge with production SaaS operations. V-AXIS implementation requires people who can configure business rules, protect customer data, validate live infrastructure, guide users through document workflows, and calmly troubleshoot issues during first use.</p>
+</main></body></html>

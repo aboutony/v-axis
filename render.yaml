@@ -54,8 +54,22 @@ services:
         sync: false
       - key: EMAIL_FROM_NAME
         sync: false
+      - key: VAULT_STORAGE_DRIVER
+        value: S3
       - key: VAULT_STORAGE_ROOT
         sync: false
+      - key: VAULT_S3_BUCKET
+        sync: false
+      - key: VAULT_S3_REGION
+        sync: false
+      - key: VAULT_S3_ENDPOINT
+        sync: false
+      - key: VAULT_S3_ACCESS_KEY_ID
+        sync: false
+      - key: VAULT_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: VAULT_S3_FORCE_PATH_STYLE
+        value: "true"
       - key: JOB_DELIVERY_MODE
         value: QUEUE
       - key: WORKER_DELIVERY_CONCURRENCY
@@ -119,8 +133,22 @@ services:
         sync: false
       - key: EMAIL_FROM_NAME
         sync: false
+      - key: VAULT_STORAGE_DRIVER
+        value: S3
       - key: VAULT_STORAGE_ROOT
         sync: false
+      - key: VAULT_S3_BUCKET
+        sync: false
+      - key: VAULT_S3_REGION
+        sync: false
+      - key: VAULT_S3_ENDPOINT
+        sync: false
+      - key: VAULT_S3_ACCESS_KEY_ID
+        sync: false
+      - key: VAULT_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: VAULT_S3_FORCE_PATH_STYLE
+        value: "true"
       - key: JOB_DELIVERY_MODE
         value: QUEUE
       - key: WORKER_DELIVERY_CONCURRENCY

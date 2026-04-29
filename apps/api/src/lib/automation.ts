@@ -55,6 +55,16 @@ function pickResourcePointer(input: {
             : null,
       };
     }
+    case "ocr.document.extract": {
+      const documentId = input.payload.documentId;
+      return {
+        resourceType: "DOCUMENT",
+        resourceId:
+          typeof documentId === "string" && documentId.trim()
+            ? documentId
+            : null,
+      };
+    }
     default:
       return {
         resourceType: "DELIVERY",
@@ -114,6 +124,13 @@ function buildPayloadPreview(input: {
         triggeredBy: normalizeTriggeredBy(input.payload.triggeredBy),
         scheduledFor: input.payload.scheduledFor ?? null,
       };
+    case "ocr.document.extract":
+      return {
+        purpose: "OCR_EXTRACTION",
+        documentId: input.payload.documentId ?? null,
+        ocrExtractionId: input.payload.ocrExtractionId ?? null,
+        requestedBy: input.payload.requestedBy ?? null,
+      };
     default:
       return {
         jobName: input.jobName,
@@ -146,7 +163,7 @@ export async function createQueuedDeliveryJobRecord(input: {
   await db.insert(automationJobs).values({
     id: jobId,
     tenantId: pickTenantId(input.payload),
-    jobKind: "DELIVERY",
+    jobKind: input.queueName === "vaxis-ocr" ? "OCR" : "DELIVERY",
     queueName: input.queueName,
     jobName: input.jobName,
     queueJobId: jobId,
@@ -265,7 +282,14 @@ export async function fetchAutomationOverview(input: {
   tenantId: string;
   limit: number;
 }) {
-  const [recentDeliveries, recentMaintenanceRuns, deliveryFailureCount, maintenanceFailureCount] =
+  const [
+    recentDeliveries,
+    recentMaintenanceRuns,
+    recentOcrJobs,
+    deliveryFailureCount,
+    maintenanceFailureCount,
+    ocrFailureCount,
+  ] =
     await Promise.all([
       db
         .select()
@@ -290,6 +314,17 @@ export async function fetchAutomationOverview(input: {
         .orderBy(desc(automationJobs.createdAt))
         .limit(input.limit),
       db
+        .select()
+        .from(automationJobs)
+        .where(
+          and(
+            eq(automationJobs.jobKind, "OCR"),
+            eq(automationJobs.tenantId, input.tenantId),
+          ),
+        )
+        .orderBy(desc(automationJobs.createdAt))
+        .limit(input.limit),
+      db
         .select({ count: sql<number>`count(*)` })
         .from(automationJobs)
         .where(
@@ -308,14 +343,26 @@ export async function fetchAutomationOverview(input: {
             eq(automationJobs.status, "FAILED"),
           ),
         ),
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(automationJobs)
+        .where(
+          and(
+            eq(automationJobs.jobKind, "OCR"),
+            eq(automationJobs.tenantId, input.tenantId),
+            eq(automationJobs.status, "FAILED"),
+          ),
+        ),
     ]);
 
   return {
     recentDeliveries,
     recentMaintenanceRuns,
+    recentOcrJobs,
     failureSummary: {
       deliveryFailed: deliveryFailureCount[0]?.count ?? 0,
       maintenanceFailed: maintenanceFailureCount[0]?.count ?? 0,
+      ocrFailed: ocrFailureCount[0]?.count ?? 0,
     },
   };
 }
@@ -331,6 +378,36 @@ export async function loadReplayableDeliveryJob(input: {
       and(
         eq(automationJobs.id, input.id),
         eq(automationJobs.jobKind, "DELIVERY"),
+        eq(automationJobs.tenantId, input.tenantId),
+      ),
+    )
+    .limit(1);
+
+  if (!job) {
+    return null;
+  }
+
+  return {
+    job,
+    payload: job.payloadEncrypted
+      ? (JSON.parse(
+          decryptSensitiveValue(job.payloadEncrypted),
+        ) as Record<string, unknown>)
+      : null,
+  };
+}
+
+export async function loadReplayableOcrJob(input: {
+  id: string;
+  tenantId: string;
+}) {
+  const [job] = await db
+    .select()
+    .from(automationJobs)
+    .where(
+      and(
+        eq(automationJobs.id, input.id),
+        eq(automationJobs.jobKind, "OCR"),
         eq(automationJobs.tenantId, input.tenantId),
       ),
     )

@@ -22,8 +22,24 @@ import {
   deriveDocumentStatusFromExpiry,
   getDaysRemaining,
 } from "../lib/governance";
+import {
+  canAccessTenantDocumentFile,
+  canAccessTenantDocumentVersionFile,
+} from "../lib/document-access";
+import {
+  approveOcrExtraction,
+  approveOcrSchema,
+  createOcrExtractionForDocument,
+  listDocumentOcrExtractions,
+  retryOcrExtraction,
+} from "../lib/ocr";
 import { ensureAuthenticated, ensurePermission } from "../lib/permissions";
-import { persistMultipartFile, removeStoredFile } from "../lib/vault";
+import { extractDocumentIntelligence } from "../services/extractor.service";
+import {
+  loadStoredFileBuffer,
+  persistMultipartFile,
+  removeStoredFile,
+} from "../lib/vault";
 
 const documentListQuerySchema = z.object({
   entityId: z.string().uuid().optional(),
@@ -107,12 +123,25 @@ const documentParamsSchema = z.object({
   documentId: z.string().uuid(),
 });
 
+const documentVersionParamsSchema = z.object({
+  documentId: z.string().uuid(),
+  versionNumber: z.coerce.number().int().positive(),
+});
+
 const criticalMasterSchema = z.object({
   isCriticalMaster: z.boolean(),
 });
 
+const ocrParamsSchema = z.object({
+  ocrExtractionId: z.string().uuid(),
+});
+
 function normalizeUserAgent(userAgent: string | string[] | undefined) {
   return Array.isArray(userAgent) ? userAgent.join(" ") : userAgent;
+}
+
+function toAttachmentFilename(value: string) {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_") || "document";
 }
 
 function sendDocumentError(reply: FastifyReply, error: unknown) {
@@ -166,6 +195,16 @@ async function readMultipartPayload(request: FastifyRequest) {
     fields,
     file,
   };
+}
+
+async function readMultipartFileBuffer(file: MultipartFile) {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of file.file) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return Buffer.concat(chunks);
 }
 
 export const documentRoutes: FastifyPluginAsync = async (fastify) => {
@@ -360,16 +399,83 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
         userAgent: normalizeUserAgent(request.headers["user-agent"]),
       });
 
+      const ocr = await createOcrExtractionForDocument({
+        tenantId: request.user.tenantId,
+        documentId: result.document.id,
+        requestedBy: request.user.sub,
+        ipAddress: request.ip,
+        userAgent: normalizeUserAgent(request.headers["user-agent"]),
+      });
+
       return reply.code(201).send({
         message: "Document uploaded to the vault.",
         document: result.document,
         riskSnapshot: result.riskSnapshot,
+        ocr,
       });
     } catch (error) {
       if (storedFile) {
         await removeStoredFile(storedFile.relativePath).catch(() => undefined);
       }
 
+      return sendDocumentError(reply, error);
+    }
+  });
+
+  fastify.post("/api/v1/documents/ocr-preview", async (request, reply) => {
+    if (!(await ensureAuthenticated(request, reply))) {
+      return;
+    }
+
+    if (!ensurePermission(request, reply, "DOCUMENT_UPLOAD")) {
+      return;
+    }
+
+    if (!request.isMultipart()) {
+      return reply.code(415).send({
+        error: "MULTIPART_REQUIRED",
+        message: "Use multipart/form-data to preview OCR extraction.",
+      });
+    }
+
+    try {
+      const { file } = await readMultipartPayload(request);
+
+      if (!file) {
+        return reply.code(400).send({
+          error: "FILE_REQUIRED",
+          message: "Select a PDF, PNG, JPEG, or JPG file for OCR preview.",
+        });
+      }
+
+      const isSupported =
+        file.mimetype === "application/pdf" ||
+        file.mimetype === "image/png" ||
+        file.mimetype === "image/jpeg" ||
+        /\.(pdf|png|jpe?g)$/i.test(file.filename);
+
+      if (!isSupported) {
+        file.file.resume();
+        return reply.code(415).send({
+          error: "UNSUPPORTED_OCR_FILE_TYPE",
+          message: "OCR preview supports PDF, PNG, JPEG, and JPG files.",
+        });
+      }
+
+      const fileBuffer = await readMultipartFileBuffer(file);
+      const ocr = await extractDocumentIntelligence({
+        fileBuffer,
+        filename: file.filename,
+        mimeType: file.mimetype,
+      });
+
+      return {
+        message: ocr.requiresReview
+          ? "OCR preview completed and requires review."
+          : "OCR preview completed.",
+        ocr,
+      };
+    } catch (error) {
       return sendDocumentError(reply, error);
     }
   });
@@ -448,11 +554,20 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
           userAgent: normalizeUserAgent(request.headers["user-agent"]),
         });
 
+        const ocr = await createOcrExtractionForDocument({
+          tenantId: request.user.tenantId,
+          documentId,
+          requestedBy: request.user.sub,
+          ipAddress: request.ip,
+          userAgent: normalizeUserAgent(request.headers["user-agent"]),
+        });
+
         return reply.code(201).send({
           message: "Document version uploaded.",
           document: result.document,
           riskSnapshot: result.riskSnapshot,
           versionNumber: result.versionNumber,
+          ocr,
         });
       } catch (error) {
         if (storedFile) {
@@ -489,6 +604,202 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
       return {
         versions,
       };
+    },
+  );
+
+  fastify.get(
+    "/api/v1/documents/:documentId/file",
+    async (request, reply) => {
+      if (!(await ensureAuthenticated(request, reply))) {
+        return;
+      }
+
+      const { documentId } = documentParamsSchema.parse(request.params);
+      const [document] = await db
+        .select()
+        .from(documents)
+        .where(
+          and(
+            eq(documents.id, documentId),
+            eq(documents.tenantId, request.user.tenantId),
+            isNull(documents.deletedAt),
+          ),
+        )
+        .limit(1);
+
+      if (!canAccessTenantDocumentFile(document, request.user.tenantId)) {
+        return reply.code(404).send({
+          error: "DOCUMENT_FILE_NOT_FOUND",
+          message: "No stored file is available for this document.",
+        });
+      }
+
+      const authorizedDocument = document as typeof document & {
+        filePath: string;
+      };
+      const fileBuffer = await loadStoredFileBuffer(authorizedDocument.filePath);
+
+      return reply
+        .header(
+          "content-type",
+          authorizedDocument.fileMimeType ?? "application/octet-stream",
+        )
+        .header(
+          "content-disposition",
+          `attachment; filename="${toAttachmentFilename(authorizedDocument.title)}"`,
+        )
+        .header("cache-control", "private, no-store")
+        .send(fileBuffer);
+    },
+  );
+
+  fastify.get(
+    "/api/v1/documents/:documentId/versions/:versionNumber/file",
+    async (request, reply) => {
+      if (!(await ensureAuthenticated(request, reply))) {
+        return;
+      }
+
+      const { documentId, versionNumber } = documentVersionParamsSchema.parse(
+        request.params,
+      );
+      const [document] = await db
+        .select({ id: documents.id, title: documents.title })
+        .from(documents)
+        .where(
+          and(
+            eq(documents.id, documentId),
+            eq(documents.tenantId, request.user.tenantId),
+            isNull(documents.deletedAt),
+          ),
+        )
+        .limit(1);
+
+      if (!document) {
+        return reply.code(404).send({
+          error: "DOCUMENT_NOT_FOUND",
+          message: "The document was not found in this tenant.",
+        });
+      }
+
+      const [version] = await db
+        .select()
+        .from(documentVersions)
+        .where(
+          and(
+            eq(documentVersions.documentId, documentId),
+            eq(documentVersions.tenantId, request.user.tenantId),
+            eq(documentVersions.versionNumber, versionNumber),
+          ),
+        )
+        .limit(1);
+
+      if (!canAccessTenantDocumentVersionFile(version, request.user.tenantId)) {
+        return reply.code(404).send({
+          error: "DOCUMENT_VERSION_NOT_FOUND",
+          message: "The requested document version was not found.",
+        });
+      }
+
+      const authorizedVersion = version as typeof version & {
+        filePath: string;
+      };
+      const fileBuffer = await loadStoredFileBuffer(authorizedVersion.filePath);
+
+      return reply
+        .header(
+          "content-type",
+          authorizedVersion.fileMimeType ?? "application/octet-stream",
+        )
+        .header(
+          "content-disposition",
+          `attachment; filename="${toAttachmentFilename(`${document.title}-v${authorizedVersion.versionNumber}`)}"`,
+        )
+        .header("cache-control", "private, no-store")
+        .send(fileBuffer);
+    },
+  );
+
+  fastify.get(
+    "/api/v1/documents/:documentId/ocr",
+    async (request, reply) => {
+      if (!(await ensureAuthenticated(request, reply))) {
+        return;
+      }
+
+      const { documentId } = documentParamsSchema.parse(request.params);
+      const ocrExtractions = await listDocumentOcrExtractions({
+        tenantId: request.user.tenantId,
+        documentId,
+      });
+
+      return {
+        ocrExtractions,
+      };
+    },
+  );
+
+  fastify.post(
+    "/api/v1/ocr-extractions/:ocrExtractionId/retry",
+    async (request, reply) => {
+      if (!(await ensureAuthenticated(request, reply))) {
+        return;
+      }
+
+      if (!ensurePermission(request, reply, "DOCUMENT_MANAGE")) {
+        return;
+      }
+
+      try {
+        const { ocrExtractionId } = ocrParamsSchema.parse(request.params);
+        const ocr = await retryOcrExtraction({
+          tenantId: request.user.tenantId,
+          ocrExtractionId,
+          requestedBy: request.user.sub,
+          ipAddress: request.ip,
+          userAgent: normalizeUserAgent(request.headers["user-agent"]),
+        });
+
+        return {
+          message: "OCR extraction queued for retry.",
+          ocr,
+        };
+      } catch (error) {
+        return sendDocumentError(reply, error);
+      }
+    },
+  );
+
+  fastify.post(
+    "/api/v1/ocr-extractions/:ocrExtractionId/approve",
+    async (request, reply) => {
+      if (!(await ensureAuthenticated(request, reply))) {
+        return;
+      }
+
+      if (!ensurePermission(request, reply, "DOCUMENT_MANAGE")) {
+        return;
+      }
+
+      try {
+        const { ocrExtractionId } = ocrParamsSchema.parse(request.params);
+        const input = approveOcrSchema.parse(request.body);
+        const result = await approveOcrExtraction({
+          tenantId: request.user.tenantId,
+          ocrExtractionId,
+          approvedBy: request.user.sub,
+          fields: input.fields,
+          ipAddress: request.ip,
+          userAgent: normalizeUserAgent(request.headers["user-agent"]),
+        });
+
+        return {
+          message: "OCR values approved and applied to the document registry.",
+          ...result,
+        };
+      } catch (error) {
+        return sendDocumentError(reply, error);
+      }
     },
   );
 

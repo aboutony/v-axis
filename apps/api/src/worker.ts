@@ -19,6 +19,8 @@ import {
   type DeliveryQueueJobData,
   enqueueMaintenanceJob,
   maintenanceJobNames,
+  ocrJobNames,
+  type OcrQueueJobData,
   queueNames,
   upsertMaintenanceScheduler,
   type InviteEmailJobData,
@@ -30,6 +32,7 @@ import {
   escalateNotificationsAcrossTenants,
   refreshGovernanceAcrossTenants,
 } from "./lib/maintenance";
+import { processOcrJob } from "./lib/ocr";
 import { emitTenantWebhookEventNow } from "./lib/webhooks";
 
 function formatJobPrefix(queueName: string) {
@@ -178,6 +181,28 @@ async function processMaintenanceJob(
   }
 }
 
+async function processOcrQueueJob(
+  job: Job<Record<string, unknown>, unknown, string>,
+) {
+  const queueData = job.data as OcrQueueJobData;
+  const attemptsMade = job.attemptsMade + 1;
+
+  if (job.name !== ocrJobNames.extractDocument) {
+    throw new Error(`Unsupported OCR job: ${job.name}`);
+  }
+
+  await markAutomationJobRunning({
+    queueJobId: String(job.id),
+    attemptsMade,
+  });
+
+  return processOcrJob({
+    automationJobId: String(job.id),
+    payload: queueData.payload,
+    attemptsMade,
+  });
+}
+
 async function bootstrapSchedulers() {
   await Promise.all([
     upsertMaintenanceScheduler({
@@ -207,6 +232,7 @@ async function bootstrapSchedulers() {
 async function main() {
   const deliveryConnection = createRedisConnection();
   const maintenanceConnection = createRedisConnection();
+  const ocrConnection = createRedisConnection();
 
   const deliveryWorker = new Worker(queueNames.delivery, processDeliveryJob, {
     connection: deliveryConnection,
@@ -220,13 +246,19 @@ async function main() {
       concurrency: 1,
     },
   );
+  const ocrWorker = new Worker(queueNames.ocr, processOcrQueueJob, {
+    connection: ocrConnection,
+    concurrency: 1,
+  });
 
   registerWorkerLogging(queueNames.delivery, deliveryWorker);
   registerWorkerLogging(queueNames.maintenance, maintenanceWorker);
+  registerWorkerLogging(queueNames.ocr, ocrWorker);
 
   await Promise.all([
     deliveryWorker.waitUntilReady(),
     maintenanceWorker.waitUntilReady(),
+    ocrWorker.waitUntilReady(),
   ]);
 
   await bootstrapSchedulers();
@@ -248,12 +280,14 @@ async function main() {
     await Promise.allSettled([
       deliveryWorker.close(),
       maintenanceWorker.close(),
+      ocrWorker.close(),
     ]);
     await Promise.allSettled([
       deliveryConnection.quit().catch(() => deliveryConnection.disconnect()),
       maintenanceConnection
         .quit()
         .catch(() => maintenanceConnection.disconnect()),
+      ocrConnection.quit().catch(() => ocrConnection.disconnect()),
     ]);
     await closeJobClients();
 

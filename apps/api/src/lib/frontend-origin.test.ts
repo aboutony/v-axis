@@ -42,4 +42,13 @@ describe("frontend origin helpers", () => {
       }),
     ).toBe("https://portal.example.com");
   });
+
+  it("rejects wildcard and non-http origins from trusted origin policy", () => {
+    expect(
+      collectTrustedFrontendOrigins({
+        corsOrigin: "*, https://portal.example.com, ftp://files.example.com",
+        appBaseUrl: "javascript:alert(1)",
+      }),
+    ).toEqual(["https://portal.example.com"]);
+  });
 });

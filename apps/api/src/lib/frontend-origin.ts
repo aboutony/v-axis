@@ -13,8 +13,18 @@ function toOrigin(value?: string) {
     return null;
   }
 
+  if (value.includes("*")) {
+    return null;
+  }
+
   try {
-    return new URL(value).origin;
+    const url = new URL(value);
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return null;
+    }
+
+    return url.origin;
   } catch {
     return null;
   }

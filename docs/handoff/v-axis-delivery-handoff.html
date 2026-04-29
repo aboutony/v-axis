@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>V-AXIS Delivery Handoff</title>
+  <style>
+    body { margin: 0; background: #f4f7fb; color: #172033; font-family: Arial, Helvetica, sans-serif; line-height: 1.55; }
+    main { max-width: 1040px; margin: 0 auto; padding: 48px 28px 72px; background: #ffffff; }
+    h1 { margin: 0 0 12px; font-size: 34px; color: #12313f; border-bottom: 4px solid #1f7a8c; padding-bottom: 16px; }
+    h2 { margin-top: 34px; color: #12313f; border-bottom: 1px solid #d8e2ea; padding-bottom: 7px; }
+    h3 { margin-top: 24px; color: #1f7a8c; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0 24px; font-size: 14px; }
+    th, td { border: 1px solid #d8e2ea; padding: 9px 10px; vertical-align: top; }
+    th { background: #12313f; color: #ffffff; text-align: left; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    code { background: #eef3f7; padding: 2px 5px; border-radius: 4px; }
+    pre { background: #101923; color: #f5f7fb; padding: 16px; overflow: auto; border-radius: 8px; }
+    pre code { background: transparent; color: inherit; padding: 0; }
+    ul, ol { padding-left: 24px; }
+    a { color: #1f7a8c; }
+    p:first-of-type { color: #506173; }
+  </style>
+</head>
+<body><main><h1>V-AXIS Delivery Handoff</h1>
+<p>Prepared for: Delivery and implementation team<br>
+Project: V-AXIS multi-tenant document governance platform<br>
+Repository: <a href="https://github.com/aboutony/v-axis">https://github.com/aboutony/v-axis</a><br>
+Frontend: <a href="https://v-axis-web.vercel.app">https://v-axis-web.vercel.app</a><br>
+API: <a href="https://v-axis-api-v9yk.onrender.com">https://v-axis-api-v9yk.onrender.com</a><br>
+Date: 2026-04-29</p>
+<h2>1. Executive Summary</h2>
+<p>V-AXIS is ready for delivery-team handoff after completion of the eight planned development phases. The platform now includes a production-minded monorepo, a preserved demo route, a real product frontend, a Fastify API, PostgreSQL persistence, Redis-backed worker automation, vault-style document storage, OCR/document intelligence foundations, tenant governance workflows, audit visibility, webhook automation, and a release-readiness QA gate.</p>
+<p>The deployed topology is split by responsibility:</p>
+<ul>
+<li>Vercel hosts the React/Vite frontend.</li>
+<li>Render hosts the API service and worker service.</li>
+<li>Managed PostgreSQL stores platform data.</li>
+<li>Managed Redis backs BullMQ delivery and worker scheduling.</li>
+<li>Vault storage is configured through S3-compatible environment variables for production-style storage.</li>
+</ul>
+<p>The final automated Phase 8 QA smoke passed against the deployed Render API and Vercel frontend origin.</p>
+<h2>2. Delivery Status</h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source control</td>
+<td>Ready</td>
+<td>Repository remote is <code>aboutony/v-axis</code>.</td>
+</tr>
+<tr>
+<td>Frontend deployment</td>
+<td>Ready</td>
+<td>Vercel project <code>v-axis-web</code>; production URL <code>https://v-axis-web.vercel.app</code>.</td>
+</tr>
+<tr>
+<td>API deployment</td>
+<td>Ready</td>
+<td>Render service URL <code>https://v-axis-api-v9yk.onrender.com</code>.</td>
+</tr>
+<tr>
+<td>Worker deployment</td>
+<td>Ready</td>
+<td>Render worker uses the same API build artifact and dedicated worker start command.</td>
+</tr>
+<tr>
+<td>Database</td>
+<td>Ready</td>
+<td>PostgreSQL is connected and reported ready in Phase 8 smoke.</td>
+</tr>
+<tr>
+<td>Redis</td>
+<td>Ready</td>
+<td>Required for queued delivery and scheduled automation.</td>
+</tr>
+<tr>
+<td>Automated QA</td>
+<td>Passed</td>
+<td>Browser and production API smoke passed on 2026-04-29.</td>
+</tr>
+<tr>
+<td>Manual production journeys</td>
+<td>Pending customer/staging data</td>
+<td>Required because these flows create or mutate live data.</td>
+</tr>
+</tbody>
+</table>
+<h2>3. Implemented Phase Summary</h2>
+<h3>Phase 0 - Source Control And Deployment Baseline</h3>
+<ul>
+<li>Established GitHub repository orientation.</li>
+<li>Added deployment guidance for Vercel and Render.</li>
+<li>Added Render blueprint configuration for API and worker.</li>
+<li>Added Vercel configuration for the frontend project.</li>
+</ul>
+<h3>Phase 1 - Demo Preservation</h3>
+<ul>
+<li>Preserved the demo experience as a dedicated route.</li>
+<li>Added automated demo checks.</li>
+<li>Protected the demo from production API/database dependency.</li>
+</ul>
+<h3>Phase 2 - Real Product Frontend</h3>
+<ul>
+<li>Added the real V-AXIS app route.</li>
+<li>Built product screens for bootstrap, workspace access, tenant administration, taxonomy, documents, audit, automation, and auth flows.</li>
+<li>Connected the frontend to the API client layer.</li>
+</ul>
+<h3>Phase 3 - Production Backend Validation</h3>
+<ul>
+<li>Added production API validation scripts and smoke tests.</li>
+<li>Hardened frontend origin handling.</li>
+<li>Verified health, docs, bootstrap readiness, CORS preflight, and protected endpoint behavior.</li>
+</ul>
+<h3>Phase 4 - OCR And Document Intelligence</h3>
+<ul>
+<li>Added OCR intelligence service foundations.</li>
+<li>Added document intelligence schema migration.</li>
+<li>Added document extraction, review, and approval-oriented flows.</li>
+</ul>
+<h3>Phase 5 - Durable Vault Storage</h3>
+<ul>
+<li>Added vault abstraction for local and S3-compatible storage.</li>
+<li>Added document upload/version handling.</li>
+<li>Added production environment hooks for vault storage.</li>
+</ul>
+<h3>Phase 6 - Worker Automation And Notification Reliability</h3>
+<ul>
+<li>Added Redis/BullMQ-backed worker processing.</li>
+<li>Added scheduled governance refresh and overdue escalation.</li>
+<li>Added delivery replay and automation visibility endpoints.</li>
+</ul>
+<h3>Phase 7 - Security, Compliance, And Multitenant Hardening</h3>
+<ul>
+<li>Added document access policy checks.</li>
+<li>Added security policy checks.</li>
+<li>Strengthened role/permission and tenant boundary behavior.</li>
+<li>Added audit and governance hardening.</li>
+</ul>
+<h3>Phase 8 - End-To-End QA And Release Readiness</h3>
+<ul>
+<li>Added browser QA across desktop and mobile routes.</li>
+<li>Added optional deployed API smoke when <code>VAXIS_API_BASE_URL</code> is provided.</li>
+<li>Documented manual production journeys and release readiness checklist.</li>
+</ul>
+<h2>4. Architecture Overview</h2>
+<h3>Monorepo Layout</h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apps/web</code></td>
+<td>React/Vite frontend, demo route, production app route, UI pages, API client.</td>
+</tr>
+<tr>
+<td><code>apps/api</code></td>
+<td>Fastify API, auth, tenant flows, document routes, automation routes, worker runtime.</td>
+</tr>
+<tr>
+<td><code>packages/db</code></td>
+<td>PostgreSQL schema, Drizzle migrations, database client.</td>
+</tr>
+<tr>
+<td><code>packages/domain</code></td>
+<td>Shared constants, roles, permissions, taxonomy, and domain utilities.</td>
+</tr>
+<tr>
+<td><code>docs</code></td>
+<td>Architecture decisions, deployment notes, roadmap, phase notes, handoff docs.</td>
+</tr>
+<tr>
+<td><code>scripts</code></td>
+<td>Release-readiness and production validation scripts.</td>
+</tr>
+</tbody>
+</table>
+<h3>Runtime Components</h3>
+<ul>
+<li>Frontend: React, Vite, React Query, React Router.</li>
+<li>API: Fastify, Zod, JWT auth, bcrypt, otplib, QRCode.</li>
+<li>Worker: BullMQ, Redis, scheduled automation loops.</li>
+<li>Data: PostgreSQL, Drizzle ORM.</li>
+<li>Storage: Vault abstraction with local filesystem and S3-compatible configuration.</li>
+<li>Tooling: TypeScript, tsup, tsx, Vitest, Puppeteer.</li>
+</ul>
+<h2>5. Production URLs And Ownership</h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GitHub repository</td>
+<td><code>https://github.com/aboutony/v-axis</code></td>
+</tr>
+<tr>
+<td>Vercel dashboard</td>
+<td><code>https://vercel.com/adonis-projects-7467a6ef</code></td>
+</tr>
+<tr>
+<td>Vercel production URL</td>
+<td><code>https://v-axis-web.vercel.app</code></td>
+</tr>
+<tr>
+<td>Render API dashboard</td>
+<td><code>https://dashboard.render.com/web/srv-d764nucr85hc739cbc8g/env</code></td>
+</tr>
+<tr>
+<td>Render API base URL</td>
+<td><code>https://v-axis-api-v9yk.onrender.com</code></td>
+</tr>
+<tr>
+<td>API docs</td>
+<td><code>https://v-axis-api-v9yk.onrender.com/docs</code></td>
+</tr>
+<tr>
+<td>API health</td>
+<td><code>https://v-axis-api-v9yk.onrender.com/health</code></td>
+</tr>
+</tbody>
+</table>
+<h2>6. Required Environment Variables</h2>
+<h3>Vercel Frontend</h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Required Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VITE_API_URL</code></td>
+<td><code>https://v-axis-api-v9yk.onrender.com</code></td>
+</tr>
+</tbody>
+</table>
+<h3>Render API And Worker</h3>
+<p>Set these on both API and worker services unless the value is API-only by business decision.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NODE_VERSION</code></td>
+<td>Node runtime version, expected <code>22</code>.</td>
+</tr>
+<tr>
+<td><code>NODE_ENV</code></td>
+<td>Production mode, expected <code>production</code>.</td>
+</tr>
+<tr>
+<td><code>DATABASE_URL</code></td>
+<td>Managed PostgreSQL connection string.</td>
+</tr>
+<tr>
+<td><code>REDIS_URL</code></td>
+<td>Managed Redis connection string.</td>
+</tr>
+<tr>
+<td><code>CORS_ORIGIN</code></td>
+<td>Trusted frontend origin, expected <code>https://v-axis-web.vercel.app</code>.</td>
+</tr>
+<tr>
+<td><code>TRUST_PROXY</code></td>
+<td>Reverse proxy trust, expected <code>true</code>.</td>
+</tr>
+<tr>
+<td><code>COOKIE_SECRET</code></td>
+<td>Strong random cookie signing secret.</td>
+</tr>
+<tr>
+<td><code>COOKIE_SAME_SITE</code></td>
+<td>Expected <code>none</code> for cross-site production cookies.</td>
+</tr>
+<tr>
+<td><code>COOKIE_SECURE</code></td>
+<td>Expected <code>true</code> in production.</td>
+</tr>
+<tr>
+<td><code>JWT_SECRET</code></td>
+<td>Strong random JWT signing secret.</td>
+</tr>
+<tr>
+<td><code>MFA_ENCRYPTION_SECRET</code></td>
+<td>Strong random encryption secret for MFA material.</td>
+</tr>
+<tr>
+<td><code>APP_ENCRYPTION_SECRET</code></td>
+<td>Strong random encryption secret for platform secrets.</td>
+</tr>
+<tr>
+<td><code>APP_BASE_URL</code></td>
+<td>Expected <code>https://v-axis-web.vercel.app</code>.</td>
+</tr>
+<tr>
+<td><code>WEBHOOK_TIMEOUT_MS</code></td>
+<td>Outbound webhook timeout, currently <code>5000</code>.</td>
+</tr>
+<tr>
+<td><code>EMAIL_TRANSPORT</code></td>
+<td><code>JSON</code> for preview mode or <code>SMTP</code> for live mail.</td>
+</tr>
+<tr>
+<td><code>SMTP_HOST</code></td>
+<td>SMTP host when live email is enabled.</td>
+</tr>
+<tr>
+<td><code>SMTP_PORT</code></td>
+<td>SMTP port when live email is enabled.</td>
+</tr>
+<tr>
+<td><code>SMTP_SECURE</code></td>
+<td>SMTP TLS flag.</td>
+</tr>
+<tr>
+<td><code>SMTP_USER</code></td>
+<td>SMTP username.</td>
+</tr>
+<tr>
+<td><code>SMTP_PASSWORD</code></td>
+<td>SMTP password.</td>
+</tr>
+<tr>
+<td><code>EMAIL_FROM_ADDRESS</code></td>
+<td>Default sender address.</td>
+</tr>
+<tr>
+<td><code>EMAIL_FROM_NAME</code></td>
+<td>Default sender name.</td>
+</tr>
+<tr>
+<td><code>VAULT_STORAGE_DRIVER</code></td>
+<td>Expected <code>S3</code> for production-style storage.</td>
+</tr>
+<tr>
+<td><code>VAULT_STORAGE_ROOT</code></td>
+<td>Local fallback root if filesystem storage is used.</td>
+</tr>
+<tr>
+<td><code>VAULT_S3_BUCKET</code></td>
+<td>S3-compatible vault bucket.</td>
+</tr>
+<tr>
+<td><code>VAULT_S3_REGION</code></td>
+<td>S3-compatible vault region.</td>
+</tr>
+<tr>
+<td><code>VAULT_S3_ENDPOINT</code></td>
+<td>S3-compatible vault endpoint.</td>
+</tr>
+<tr>
+<td><code>VAULT_S3_ACCESS_KEY_ID</code></td>
+<td>S3-compatible access key.</td>
+</tr>
+<tr>
+<td><code>VAULT_S3_SECRET_ACCESS_KEY</code></td>
+<td>S3-compatible secret key.</td>
+</tr>
+<tr>
+<td><code>VAULT_S3_FORCE_PATH_STYLE</code></td>
+<td>Expected <code>true</code> for many S3-compatible providers.</td>
+</tr>
+<tr>
+<td><code>JOB_DELIVERY_MODE</code></td>
+<td>Expected <code>QUEUE</code> for production.</td>
+</tr>
+<tr>
+<td><code>WORKER_DELIVERY_CONCURRENCY</code></td>
+<td>Current default <code>5</code>.</td>
+</tr>
+<tr>
+<td><code>WORKER_GOVERNANCE_REFRESH_INTERVAL_MS</code></td>
+<td>Current default <code>900000</code>.</td>
+</tr>
+<tr>
+<td><code>WORKER_ESCALATION_INTERVAL_MS</code></td>
+<td>Current default <code>300000</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2>7. Deployment Commands</h2>
+<h3>Local Verification</h3>
+<pre><code class="language-powershell">npm install
+npm run typecheck
+npm run test
+npm run build
+npm run test:demo
+$env:VAXIS_API_BASE_URL=&quot;https://v-axis-api-v9yk.onrender.com&quot;
+$env:VAXIS_FRONTEND_ORIGIN=&quot;https://v-axis-web.vercel.app&quot;
+npm run phase8:qa
+</code></pre>
+<h3>Frontend Deployment</h3>
+<pre><code class="language-powershell">npm exec --yes vercel -- --prod
+</code></pre>
+<p>The Vercel project is linked through <code>.vercel/project.json</code> as <code>v-axis-web</code>.</p>
+<h3>Render Deployment</h3>
+<p>Render is configured through <code>render.yaml</code> for:</p>
+<ul>
+<li><code>v-axis-api</code></li>
+<li><code>v-axis-worker</code></li>
+</ul>
+<p>With auto-deploy enabled, a push to the connected GitHub branch should trigger Render deployment. If auto-deploy is disabled or the dashboard requires confirmation, trigger a manual deploy from Render after pushing.</p>
+<h3>Database Migration</h3>
+<p>Run migrations against the production database before customer use:</p>
+<pre><code class="language-powershell">npm run db:migrate
+</code></pre>
+<p>Only run this with <code>DATABASE_URL</code> set to the intended production database.</p>
+<h2>8. Validation Results</h2>
+<p>The Phase 8 release gate was run against the deployed API and frontend origin on 2026-04-29.</p>
+<p>Validated:</p>
+<ul>
+<li>Demo route renders on desktop and mobile.</li>
+<li>Product <code>/app</code> route renders on desktop and mobile.</li>
+<li>Primary route buttons are visible and clickable.</li>
+<li>No unexpected browser console/page errors.</li>
+<li>No horizontal overflow on desktop or mobile.</li>
+<li><code>/health</code> returns healthy.</li>
+<li><code>/docs</code> is reachable.</li>
+<li><code>/api/v1/platform/bootstrap</code> reports database readiness.</li>
+<li>CORS preflight allows <code>https://v-axis-web.vercel.app</code>.</li>
+<li>Protected endpoints reject unauthenticated access.</li>
+</ul>
+<p>Observed platform state:</p>
+<ul>
+<li>Database ready: yes.</li>
+<li>Startup issue: none.</li>
+<li>Tenant count: zero at smoke-test time.</li>
+</ul>
+<h2>9. Manual Production Journey Checklist</h2>
+<p>These journeys intentionally remain manual because they create or mutate production data. Run them in a customer staging tenant first, then repeat in production with customer approval.</p>
+<table>
+<thead>
+<tr>
+<th>Journey</th>
+<th>Acceptance Signal</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tenant bootstrap</td>
+<td>First tenant and admin are created successfully.</td>
+</tr>
+<tr>
+<td>Login</td>
+<td>Tenant admin can sign in and reaches workspace.</td>
+</tr>
+<tr>
+<td>MFA enrollment</td>
+<td>Admin can enroll and verify TOTP.</td>
+</tr>
+<tr>
+<td>Invite acceptance</td>
+<td>Invited user can accept invite and sign in.</td>
+</tr>
+<tr>
+<td>Password reset</td>
+<td>Reset link can be issued and completed.</td>
+</tr>
+<tr>
+<td>Entity setup</td>
+<td>Customer entities and category rules can be configured.</td>
+</tr>
+<tr>
+<td>Document upload</td>
+<td>Files upload, version, and appear in registry.</td>
+</tr>
+<tr>
+<td>OCR extraction</td>
+<td>OCR result is created and visible for review.</td>
+</tr>
+<tr>
+<td>OCR approval</td>
+<td>Reviewer can approve or correct extraction output.</td>
+</tr>
+<tr>
+<td>Governance recalculation</td>
+<td>Dashboard and risk summaries update after changes.</td>
+</tr>
+<tr>
+<td>Notifications</td>
+<td>Notifications can be created, acknowledged, escalated, and resolved.</td>
+</tr>
+<tr>
+<td>Audit export</td>
+<td>Audit records can be filtered and exported.</td>
+</tr>
+<tr>
+<td>Webhook test</td>
+<td>Signed webhook delivery can be sent and audited.</td>
+</tr>
+<tr>
+<td>Worker replay</td>
+<td>Failed email/webhook/OCR work can be replayed.</td>
+</tr>
+</tbody>
+</table>
+<h2>10. Customer-Site Implementation Runbook</h2>
+<ol>
+<li>Confirm customer deployment model, data residency, identity requirements, email provider, storage provider, and support model.</li>
+<li>Provision or confirm production PostgreSQL, Redis, S3-compatible storage, and SMTP provider.</li>
+<li>Configure Render API and worker environment variables.</li>
+<li>Run database migrations against the intended database.</li>
+<li>Deploy API and worker, then verify <code>/health</code>, <code>/docs</code>, and bootstrap readiness.</li>
+<li>Configure Vercel <code>VITE_API_URL</code> and deploy the frontend.</li>
+<li>Confirm API CORS accepts only the intended customer frontend origin.</li>
+<li>Bootstrap the first customer tenant with an approved admin account.</li>
+<li>Complete MFA enrollment and verify access controls.</li>
+<li>Configure customer entities, taxonomy, document rules, and notification policies.</li>
+<li>Configure SMTP and webhook endpoints.</li>
+<li>Upload pilot documents and validate OCR/review workflows.</li>
+<li>Run the manual production journey checklist.</li>
+<li>Train customer administrators and support team.</li>
+<li>Capture sign-off and transition to support.</li>
+</ol>
+<h2>11. Security And Compliance Notes</h2>
+<ul>
+<li>Do not store production secrets in Git.</li>
+<li>Rotate any secret that was shared outside the final production secret manager.</li>
+<li>Use strong random values for cookie, JWT, MFA, and app encryption secrets.</li>
+<li>Restrict CORS to approved frontend origins.</li>
+<li>Confirm customer requirements for retention, backup, audit export, and data residency.</li>
+<li>Confirm S3-compatible vault bucket permissions, encryption, retention, and lifecycle policies.</li>
+<li>Confirm SMTP domain authentication, sender policy, and production mail monitoring.</li>
+<li>Review audit logs after the first implementation run.</li>
+</ul>
+<h2>12. Known Constraints And Follow-Up Items</h2>
+<ul>
+<li>Manual production journeys still require customer-approved test data.</li>
+<li>Email delivery is environment-dependent; production SMTP must be configured before live invite/reset testing.</li>
+<li>S3-compatible vault settings must be validated with an actual customer bucket.</li>
+<li>OCR quality depends on document type, scan quality, language, and customer review process.</li>
+<li>External identity provider integration is not included in the current phase scope.</li>
+<li>Formal penetration testing and customer compliance review should be scheduled before broad rollout.</li>
+</ul>
+<h2>13. Handoff Package Contents</h2>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Delivery handoff Markdown</td>
+<td><code>docs/handoff/v-axis-delivery-handoff.md</code></td>
+</tr>
+<tr>
+<td>Delivery handoff HTML</td>
+<td><code>docs/handoff/v-axis-delivery-handoff.html</code></td>
+</tr>
+<tr>
+<td>Delivery handoff DOCX</td>
+<td><code>docs/handoff/v-axis-delivery-handoff.docx</code></td>
+</tr>
+<tr>
+<td>Delivery team skills Markdown</td>
+<td><code>docs/handoff/v-axis-delivery-team-skills.md</code></td>
+</tr>
+<tr>
+<td>Delivery team skills HTML</td>
+<td><code>docs/handoff/v-axis-delivery-team-skills.html</code></td>
+</tr>
+<tr>
+<td>Delivery team skills DOCX</td>
+<td><code>docs/handoff/v-axis-delivery-team-skills.docx</code></td>
+</tr>
+</tbody>
+</table>
+<h2>14. Final Handoff Statement</h2>
+<p>V-AXIS is ready for delivery-team implementation planning. The platform has a working deployment topology, an automated release-readiness gate, core tenant/document/governance workflows, production deployment configuration, and customer-site implementation documentation. The delivery team should now validate customer-specific infrastructure, configure final secrets, run production migrations, execute the manual journey checklist, and obtain customer sign-off.</p>
+</main></body></html>
