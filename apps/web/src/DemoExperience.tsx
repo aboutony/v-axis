@@ -459,6 +459,34 @@ function getPriorityClasses(priority: Priority, isDarkMode: boolean) {
   }
 }
 
+function getScenarioOptionClasses(
+  scenario: ScenarioKey,
+  isSelected: boolean,
+  isDarkMode: boolean,
+) {
+  const selectedClasses: Record<ScenarioKey, string> = {
+    stable: "border-emerald-600 bg-emerald-600 text-white",
+    warning: "border-orange-500 bg-orange-500 text-slate-950",
+    critical: "border-red-600 bg-red-600 text-white",
+  };
+  const darkClasses: Record<ScenarioKey, string> = {
+    stable: "border-emerald-400/45 bg-emerald-400/12 text-emerald-100",
+    warning: "border-orange-300/55 bg-orange-400/16 text-orange-100",
+    critical: "border-red-300/55 bg-red-400/16 text-red-100",
+  };
+  const lightClasses: Record<ScenarioKey, string> = {
+    stable: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    warning: "border-orange-200 bg-orange-50 text-orange-800",
+    critical: "border-red-200 bg-red-50 text-red-800",
+  };
+
+  if (isSelected) {
+    return selectedClasses[scenario];
+  }
+
+  return isDarkMode ? darkClasses[scenario] : lightClasses[scenario];
+}
+
 function getStatusTone(status: RecordStatus, isDarkMode: boolean) {
   switch (status) {
     case "active":
@@ -1122,6 +1150,19 @@ function DemoExperience() {
     }
     return value;
   };
+  const localizeNotificationLatestUpdate = (value: string) => {
+    if (locale === "en") {
+      return value;
+    }
+    const map: Record<string, string> = {
+      "Alert delivered by WhatsApp, email, SMS, and in-app bell.":
+        "تم تسليم التنبيه عبر واتساب والبريد الإلكتروني والرسائل النصية وجرس المنصة.",
+      "Stakeholders were alerted across all delivery channels.":
+        "تم تنبيه أصحاب العلاقة عبر جميع قنوات التسليم.",
+    };
+
+    return map[value] ?? value;
+  };
   const localizeActivityTitle = (value: string) => {
     if (locale === "en") {
       return value;
@@ -1326,7 +1367,8 @@ function DemoExperience() {
                           {localizeNotificationMessage(notification.message)}
                         </p>
                         <p className="mt-2 text-xs text-muted-foreground">
-                          {isArabic ? "آخر تحديث:" : "Latest status:"} {notification.latestUpdate}
+                          {isArabic ? "آخر تحديث:" : "Latest status:"}{" "}
+                          {localizeNotificationLatestUpdate(notification.latestUpdate)}
                         </p>
                       </div>
 
@@ -1374,9 +1416,7 @@ function DemoExperience() {
                     type="button"
                     onClick={() => setScenario(key)}
                     className={`rounded-2xl border px-4 py-2 text-sm font-medium transition-transform hover:scale-[1.02] ${
-                      scenario === key
-                        ? "border-primary bg-primary text-white"
-                        : inactiveSegmentClass
+                      getScenarioOptionClasses(key, scenario === key, isDarkMode)
                     }`}
                   >
                     {scenarioLabels[locale][key]}
