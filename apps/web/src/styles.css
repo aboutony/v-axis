@@ -88,3 +88,21 @@
     color: var(--color-foreground);
   }
 }
+
+@layer components {
+  .demo-rtl-scope[dir="rtl"] {
+    text-align: right;
+  }
+
+  .demo-rtl-scope[dir="rtl"] .text-left {
+    text-align: right !important;
+  }
+
+  .demo-rtl-scope[dir="rtl"] .md\:text-right {
+    text-align: right !important;
+  }
+
+  .demo-rtl-scope[dir="rtl"] .demo-arrow-forward {
+    transform: rotate(180deg);
+  }
+}

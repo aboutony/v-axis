@@ -1248,7 +1248,10 @@ function DemoExperience() {
     : "border-white/40 bg-background/80 text-slate-700";
 
   return (
-    <div className="min-h-screen bg-background text-foreground" dir={isArabic ? "rtl" : "ltr"}>
+    <div
+      className="demo-rtl-scope min-h-screen bg-background text-foreground"
+      dir={isArabic ? "rtl" : "ltr"}
+    >
       <div className="mx-auto min-h-screen max-w-[1720px] px-5 py-6 sm:px-8 lg:px-10">
         <header
           className={`mb-8 rounded-[2rem] border p-6 shadow-[var(--shadow-soft)] backdrop-blur ${heroShellClass}`}
@@ -1515,7 +1518,7 @@ function DemoExperience() {
                     </p>
                     <p className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary">
                       {t.openSurface}
-                      <ArrowRight className="h-4 w-4" />
+                      <ArrowRight className="demo-arrow-forward h-4 w-4" />
                     </p>
                   </button>
                 ))}
@@ -1551,11 +1554,7 @@ function DemoExperience() {
                               {playbook.description}
                             </p>
                           </div>
-                          <ArrowRight
-                            className={`mt-1 h-4 w-4 shrink-0 text-primary ${
-                              isArabic ? "rotate-180" : ""
-                            }`}
-                          />
+                          <ArrowRight className="demo-arrow-forward mt-1 h-4 w-4 shrink-0 text-primary" />
                         </div>
                       </button>
                     ))}
