@@ -295,6 +295,7 @@ const localizedValues = {
     "HR Energy": "موارد بشرية الطاقة",
     "Government Relations Desk": "مكتب العلاقات الحكومية",
     "HR Renewal Desk": "مكتب تجديد الموارد البشرية",
+    "Client Admin": "مسؤول العميل",
   },
   journey: {
     "Entity Readiness": "جاهزية الكيان",
