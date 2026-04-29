@@ -263,6 +263,16 @@ const localizedValues = {
     "GOSI Registration": "تسجيل التأمينات الاجتماعية",
     "Labor Office File": "ملف مكتب العمل",
     "Wasil Registration": "تسجيل واصل",
+    "Chamber of Commerce": "الغرفة التجارية",
+    "Zakat/ VAT": "الزكاة وضريبة القيمة المضافة",
+    "Zakat/ Vat": "الزكاة وضريبة القيمة المضافة",
+    "Bank account": "الحساب البنكي",
+    "Office space contract": "عقد مقر العمل",
+    "Labor office file": "ملف مكتب العمل",
+    "CR and chamber": "السجل التجاري والغرفة التجارية",
+    "Baladyah License": "رخصة البلدية",
+    salamah: "شهادة سلامة",
+    "Post office": "البريد",
   },
   authority: {
     "Ministry of Commerce": "وزارة التجارة",
@@ -629,6 +639,28 @@ function DemoExperience() {
   const lRole = (value: string) => localizeMappedValue(locale, "role", value);
   const lDepartment = (value: string) => localizeMappedValue(locale, "department", value);
   const localizeScenario = (value: ScenarioKey) => scenarioLabels[locale][value];
+  const localizeRenewalStatus = (value: EntityDocument["requiredForRenewal"][number]["status"]) => {
+    if (locale === "en") {
+      return value;
+    }
+
+    return {
+      Active: "نشط",
+      Pending: "قيد الانتظار",
+      Expired: "منتهي",
+    }[value];
+  };
+  const localizeApprovalStatus = (value: EntityDocument["approvalFlow"][number]["status"]) => {
+    if (locale === "en") {
+      return value;
+    }
+
+    return {
+      Granted: "معتمد",
+      Pending: "قيد الانتظار",
+      Escalated: "مصعد",
+    }[value];
+  };
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDarkMode);
@@ -1160,15 +1192,18 @@ function DemoExperience() {
     );
     const activities = demoState.activities.slice(0, 12);
     const generatedAt = new Date().toLocaleString();
+    const reportTitle = isArabic
+      ? "تقرير V-AXIS لإثبات اكتمال المهام"
+      : "V-AXIS Court-ready Proof of Task Completion";
     const rows = docs
       .map(
         (document) => `
           <tr>
             <td>${escapeHtml(document.referenceNumber)}</td>
-            <td>${escapeHtml(document.title)}</td>
+            <td>${escapeHtml(lTitle(document.title))}</td>
             <td>${escapeHtml(document.number)}</td>
-            <td>${escapeHtml(document.owner)}</td>
-            <td>${escapeHtml(document.status)}</td>
+            <td>${escapeHtml(lOwner(document.owner))}</td>
+            <td>${escapeHtml(localizeStatus(document.status, locale))}</td>
             <td>${escapeHtml(document.expiryDate)}</td>
           </tr>`,
       )
@@ -1179,9 +1214,9 @@ function DemoExperience() {
           (step) => `
             <tr>
               <td>${escapeHtml(document.referenceNumber)}</td>
-              <td>${escapeHtml(document.title)}</td>
-              <td>${escapeHtml(step.stakeholder)}</td>
-              <td>${escapeHtml(step.status)}</td>
+              <td>${escapeHtml(lTitle(document.title))}</td>
+              <td>${escapeHtml(lOwner(step.stakeholder))}</td>
+              <td>${escapeHtml(localizeApprovalStatus(step.status))}</td>
               <td>${escapeHtml(step.timestamp)}</td>
             </tr>`,
         ),
@@ -1191,9 +1226,9 @@ function DemoExperience() {
       .map(
         (task) => `
           <tr>
-            <td>${escapeHtml(task.title)}</td>
-            <td>${escapeHtml(task.owner)}</td>
-            <td>${escapeHtml(task.status)}</td>
+            <td>${escapeHtml(localizeTaskTitle(task.title))}</td>
+            <td>${escapeHtml(lOwner(task.owner))}</td>
+            <td>${escapeHtml(isArabic ? (task.status === "done" ? "مكتمل" : task.status === "open" ? "مفتوح" : "قيد التنفيذ") : task.status)}</td>
             <td>${escapeHtml(task.dueDate)}</td>
           </tr>`,
       )
@@ -1203,8 +1238,8 @@ function DemoExperience() {
         (activity) => `
           <tr>
             <td>${escapeHtml(activity.timestamp.slice(0, 10))}</td>
-            <td>${escapeHtml(activity.title)}</td>
-            <td>${escapeHtml(activity.detail)}</td>
+            <td>${escapeHtml(localizeActivityTitle(activity.title))}</td>
+            <td>${escapeHtml(localizeActivityDetail(activity.detail))}</td>
           </tr>`,
       )
       .join("");
@@ -1219,7 +1254,7 @@ function DemoExperience() {
       <!doctype html>
       <html>
         <head>
-          <title>V-AXIS Court-ready Proof Report</title>
+          <title>${escapeHtml(reportTitle)}</title>
           <style>
             body { font-family: Arial, sans-serif; color: #0f172a; margin: 32px; }
             h1 { font-size: 28px; margin-bottom: 4px; }
@@ -1233,18 +1268,18 @@ function DemoExperience() {
           </style>
         </head>
         <body>
-          <h1>V-AXIS Court-ready Proof of Task Completion</h1>
-          <p class="meta">Entity: ${escapeHtml(selectedSubsidiary)} | Generated: ${escapeHtml(generatedAt)} | Warning policy: ${warningWindowDays} days</p>
-          <div class="seal">System generated governance record</div>
-          <h2>Document Register</h2>
-          <table><thead><tr><th>Reference</th><th>Document</th><th>Document No.</th><th>Task owner</th><th>Status</th><th>Expiry</th></tr></thead><tbody>${rows}</tbody></table>
-          <h2>Approval Flow</h2>
-          <table><thead><tr><th>Reference</th><th>Document</th><th>Stakeholder</th><th>Approval status</th><th>Date</th></tr></thead><tbody>${approvalRows}</tbody></table>
-          <h2>Task Completion Evidence</h2>
-          <table><thead><tr><th>Task</th><th>Owner</th><th>Status</th><th>Due date</th></tr></thead><tbody>${taskRows || "<tr><td colspan='4'>No open document tasks.</td></tr>"}</tbody></table>
-          <h2>Audit Trail</h2>
-          <table><thead><tr><th>Date</th><th>Event</th><th>Detail</th></tr></thead><tbody>${activityRows}</tbody></table>
-          <button onclick="window.print()">Print / Save as PDF</button>
+          <h1>${escapeHtml(reportTitle)}</h1>
+          <p class="meta">${isArabic ? `الكيان: ${escapeHtml(lSubsidiary(selectedSubsidiary))} | تاريخ الإنشاء: ${escapeHtml(generatedAt)} | سياسة التحذير: ${warningWindowDays} يوم` : `Entity: ${escapeHtml(selectedSubsidiary)} | Generated: ${escapeHtml(generatedAt)} | Warning policy: ${warningWindowDays} days`}</p>
+          <div class="seal">${isArabic ? "سجل حوكمة منشأ من النظام" : "System generated governance record"}</div>
+          <h2>${isArabic ? "سجل المستندات" : "Document Register"}</h2>
+          <table><thead><tr><th>${isArabic ? "المرجع" : "Reference"}</th><th>${isArabic ? "المستند" : "Document"}</th><th>${isArabic ? "رقم المستند" : "Document No."}</th><th>${isArabic ? "مالك المهمة" : "Task owner"}</th><th>${isArabic ? "الحالة" : "Status"}</th><th>${isArabic ? "الانتهاء" : "Expiry"}</th></tr></thead><tbody>${rows}</tbody></table>
+          <h2>${isArabic ? "مسار الاعتماد" : "Approval Flow"}</h2>
+          <table><thead><tr><th>${isArabic ? "المرجع" : "Reference"}</th><th>${isArabic ? "المستند" : "Document"}</th><th>${isArabic ? "صاحب العلاقة" : "Stakeholder"}</th><th>${isArabic ? "حالة الاعتماد" : "Approval status"}</th><th>${isArabic ? "التاريخ" : "Date"}</th></tr></thead><tbody>${approvalRows}</tbody></table>
+          <h2>${isArabic ? "إثبات اكتمال المهام" : "Task Completion Evidence"}</h2>
+          <table><thead><tr><th>${isArabic ? "المهمة" : "Task"}</th><th>${isArabic ? "المالك" : "Owner"}</th><th>${isArabic ? "الحالة" : "Status"}</th><th>${isArabic ? "تاريخ الاستحقاق" : "Due date"}</th></tr></thead><tbody>${taskRows || `<tr><td colspan='4'>${isArabic ? "لا توجد مهام مستندات مفتوحة." : "No open document tasks."}</td></tr>`}</tbody></table>
+          <h2>${isArabic ? "سجل التدقيق" : "Audit Trail"}</h2>
+          <table><thead><tr><th>${isArabic ? "التاريخ" : "Date"}</th><th>${isArabic ? "الحدث" : "Event"}</th><th>${isArabic ? "التفاصيل" : "Detail"}</th></tr></thead><tbody>${activityRows}</tbody></table>
+          <button onclick="window.print()">${isArabic ? "طباعة / حفظ كملف PDF" : "Print / Save as PDF"}</button>
           <script>window.onload = () => setTimeout(() => window.print(), 250);</script>
         </body>
       </html>
@@ -1259,7 +1294,11 @@ function DemoExperience() {
         "governance-trail",
       ),
     );
-    announce("Court-ready PDF report generated with approvals and completion proof.");
+    announce(
+      isArabic
+        ? "تم إنشاء تقرير PDF للإثبات مع الاعتمادات وإثبات الإنجاز."
+        : "Court-ready PDF report generated with approvals and completion proof.",
+    );
   }
 
   const openTasks = demoState.tasks.filter((task) => task.status !== "done");
@@ -1850,7 +1889,7 @@ function DemoExperience() {
                         <option value="all">{isArabic ? "الكل" : "All types"}</option>
                         {documentTypeOptions.map((type) => (
                           <option key={type} value={type}>
-                            {type}
+                            {lTitle(type)}
                           </option>
                         ))}
                       </select>
@@ -1867,7 +1906,7 @@ function DemoExperience() {
                         <option value="all">{isArabic ? "كل المالكين" : "All owners"}</option>
                         {ownerOptions.map((owner) => (
                           <option key={owner} value={owner}>
-                            {owner}
+                            {lOwner(owner)}
                           </option>
                         ))}
                       </select>
@@ -1977,7 +2016,7 @@ function DemoExperience() {
                       <InfoCard label={t.authority} isDarkMode={isDarkMode}>{lAuthority(selectedDocument.authority)}</InfoCard>
                       <InfoCard label={t.documentNo} isDarkMode={isDarkMode}>{selectedDocument.number}</InfoCard>
                       <InfoCard label={isArabic ? "الرقم المرجعي" : "Reference No."} isDarkMode={isDarkMode}>{selectedDocument.referenceNumber}</InfoCard>
-                      <InfoCard label={isArabic ? "نوع المستند" : "Document Type"} isDarkMode={isDarkMode}>{selectedDocument.documentType}</InfoCard>
+                      <InfoCard label={isArabic ? "نوع المستند" : "Document Type"} isDarkMode={isDarkMode}>{lTitle(selectedDocument.documentType)}</InfoCard>
                       <InfoCard label={t.issueDate} isDarkMode={isDarkMode}>{formatDate(selectedDocument.issueDate, locale)}</InfoCard>
                       <InfoCard label={t.expiryDate} isDarkMode={isDarkMode}>{formatDate(selectedDocument.expiryDate, locale)}</InfoCard>
                     </div>
@@ -2007,7 +2046,7 @@ function DemoExperience() {
                             className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${mutedCardClass}`}
                           >
                             <div>
-                              <p className="text-sm font-medium">{item.title}</p>
+                              <p className="text-sm font-medium">{lTitle(item.title)}</p>
                               <p className="text-xs text-muted-foreground">{item.referenceNumber}</p>
                             </div>
                             <span
@@ -2017,7 +2056,7 @@ function DemoExperience() {
                                   : "bg-amber-500/10 text-amber-600"
                               }`}
                             >
-                              {item.status}
+                              {localizeRenewalStatus(item.status)}
                             </span>
                           </div>
                         ))}
@@ -2038,7 +2077,7 @@ function DemoExperience() {
                             className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${mutedCardClass}`}
                           >
                             <div>
-                              <p className="text-sm font-medium">{step.stakeholder}</p>
+                              <p className="text-sm font-medium">{lOwner(step.stakeholder)}</p>
                               <p className="text-xs text-muted-foreground">{step.timestamp}</p>
                             </div>
                             <span
@@ -2050,7 +2089,7 @@ function DemoExperience() {
                                     : "bg-amber-500/10 text-amber-600"
                               }`}
                             >
-                              {step.status}
+                              {localizeApprovalStatus(step.status)}
                             </span>
                           </div>
                         ))}
